@@ -30,7 +30,7 @@ from scipy.ndimage import binary_erosion #, shift, center_of_mass
 from poppy import zernike
 
 
-def fdpr(fit_mask, images, defocus_values):
+def fdpr(fit_mask, images, defocus_values, tol=1e-6, reg=0, wreg=10):
 
     # PV to RMS and sign convention change
     Ediv = get_defocus_probes(fit_mask, -0.25 * cp.asarray(defocus_values))
