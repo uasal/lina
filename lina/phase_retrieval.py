@@ -36,9 +36,6 @@ def fdpr(fit_mask, images, defocus_values, tol=1e-6, reg=0, wreg=10):
     Ediv = get_defocus_probes(fit_mask, -0.25 * cp.asarray(defocus_values))
 
     # phase retrieval parameters
-    tol = 1e-6
-    reg = 0
-    wreg = 10
     modes = cp.asnumpy(pp.zernike.arbitrary_basis(fit_mask, nterms=100, outside=0))
 
     # square-ify the PSFs
