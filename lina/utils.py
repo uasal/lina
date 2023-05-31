@@ -19,7 +19,6 @@ def ensure_np_array(arr):
     else:
         return arr
 
-    
 def pad_or_crop( arr_in, npix ):
     n_arr_in = arr_in.shape[0]
     if n_arr_in == npix:
@@ -81,15 +80,13 @@ def create_annular_focal_plane_mask(x, y, params, plot=False):
     r = xp.hypot(x, y)
     mask = (r < params['outer_radius']) * (r > params['inner_radius'])
     if 'edge' in params: mask *= (x > params['edge'])
-    
-    if 'rotation' in params: mask = _scipy.ndimage.rotate(mask, params['rotation'], reshape=False, order=0)
+    if 'rotation' in params: mask = _scipy.ndimage.rotate(mask, params['rotation'], reshape=False, order=1)
     if 'xshift' in params: mask = _scipy.ndimage.shift(mask, (0, params['xshift']), order=0)
     if 'yshift' in params: mask = _scipy.ndimage.shift(mask, (params['yshift'], 0), order=0)
     
     if plot:
         imshow1(mask)
         
-    
     return mask
 
 def create_box_focal_plane_mask(x, y, params):

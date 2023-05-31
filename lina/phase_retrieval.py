@@ -1,10 +1,16 @@
+from .math_module import xp, _scipy, cupy_avail
+if cupy_avail:
+    import cupy as cp
+else:
+    cp = False
+
 import numpy as np
 import cupy as cp
 import matplotlib.pyplot as plt
 
 import hcipy as hp
 import poppy as pp
-import matlab.engine as mat
+# import matlab.engine as mat
 from scipy.ndimage import gaussian_filter
 from skimage.transform import resize, downscale_local_mean
 from skimage.filters import threshold_otsu
