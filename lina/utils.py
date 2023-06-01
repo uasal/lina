@@ -14,10 +14,10 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colors import LogNorm
 
 def ensure_np_array(arr):
-    if cp and isinstance(arr, cp.ndarray):
-        return arr.get()
-    else:
+    if isinstance(arr, np.ndarray):
         return arr
+    else:
+        return arr.get()
 
 def pad_or_crop( arr_in, npix ):
     n_arr_in = arr_in.shape[0]
@@ -28,7 +28,7 @@ def pad_or_crop( arr_in, npix ):
         x2 = x1 + npix
         arr_out = arr_in[x1:x2,x1:x2].copy()
     else:
-        arr_out = cp.zeros((npix,npix), dtype=arr_in.dtype) if cupy_available and isinstance(arr_in, cp.ndarray) else np.zeros((npix,npix), dtype=arr_in.dtype)
+        arr_out = np.zeros((npix,npix), dtype=arr_in.dtype) if isinstance(arr_in, np.ndarray) else cp.zeros((npix,npix), dtype=arr_in.dtype)
         x1 = npix // 2 - n_arr_in // 2
         x2 = x1 + n_arr_in
         arr_out[x1:x2,x1:x2] = arr_in

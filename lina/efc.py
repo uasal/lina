@@ -50,8 +50,9 @@ def build_jacobian(sysi, epsilon, dark_mask, display=False, print_status=True):
 
 def run_efc_perfect(sysi, 
                     jac, 
-                    reg_fun,
-                    reg_conds,
+                    control_matrix,
+#                     reg_fun,
+#                     reg_conds,
                     dark_mask, 
                     Imax_unocc=1,
                     efc_loop_gain=0.5, 
@@ -84,13 +85,6 @@ def run_efc_perfect(sysi,
     for i in range(iterations+1):
         try:
             print('\tRunning iteration {:d}/{:d}.'.format(i+1, iterations))
-
-            if i==0 or i in reg_conds[0]:
-                reg_cond_ind = np.argwhere(i==reg_conds[0])[0][0]
-                reg_cond = reg_conds[1, reg_cond_ind]
-                print('\tComputing EFC matrix via ' + reg_fun.__name__ + ' with condition value {:.2e}'.format(reg_cond))
-                efc_matrix = reg_fun(jac, reg_cond)
-
             sysi.set_dm(dm_ref + dm_command)
 
             electric_field = sysi.calc_psf()
@@ -101,10 +95,10 @@ def run_efc_perfect(sysi,
             efield_ri = xp.zeros(2*Ndh)
             efield_ri[::2] = electric_field[dark_mask].real
             efield_ri[1::2] = electric_field[dark_mask].imag
-            del_dm = -xp.array(efc_matrix).dot(xp.array(efield_ri))
+            del_dm = -control_matrix.dot(efield_ri)
 
-            del_dm = utils.map_acts_to_dm(del_dm.get(), dm_mask)
-            dm_command += efc_loop_gain * del_dm
+            del_dm = xp.array(utils.map_acts_to_dm(utils.ensure_np_array(del_dm), dm_mask))
+            dm_command += efc_loop_gain * utils.ensure_np_array(del_dm)
             
             if plot_current or plot_all:
                 if not plot_all: clear_output(wait=True)
@@ -112,10 +106,10 @@ def run_efc_perfect(sysi,
                 imshows.imshow2(commands[i], xp.abs(efields[i])**2, lognorm2=True)
                 
                 if plot_sms:
-                    sms_fig = utils.sms(U, s, alpha2, efield_ri, N_DH, Imax_unocc, i)
+                    sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)
                     
                 if plot_radial_contrast:
-                    utils.plot_radial_contrast(images[-1], control_mask, sysi.psf_pixelscale_lamD, nbins=30)
+                    utils.plot_radial_contrast(xp.abs(efields[i])**2, dark_mask, sysi.psf_pixelscale_lamD, nbins=30)
                     
         except KeyboardInterrupt:
             print('EFC interrupted.')
@@ -190,35 +184,11 @@ def run_efc_pwp(sysi,
             del_dm = utils.map_acts_to_dm(del_dm, dm_mask)
             dm_command += efc_loop_gain * del_dm
             
-            if display_current or display_all:
-                if not display_all: clear_output(wait=True)
-                    
-                print('Estimation and exact image match factor is {:.3f}'.format(mf))
-                fig,ax = plt.subplots(nrows=1, ncols=2, figsize=(10,4), dpi=125)
-                im = ax[0].imshow(commands[i], cmap='viridis')
-                ax[0].set_title('DM Command')
-                divider = make_axes_locatable(ax[0])
-                cax = divider.append_axes("right", size="4%", pad=0.075)
-                fig.colorbar(im, cax=cax)
-    
-                im = ax[1].imshow(I_est, 
-                                 norm=LogNorm(vmin=(np.abs(electric_field)**2).max()/1e7),
-                                 extent=extent)
-                ax[1].set_title('Estimated Intesnity'.format(i))
-                divider = make_axes_locatable(ax[1])
-                cax = divider.append_axes("right", size="4%", pad=0.075)
-                fig.colorbar(im, cax=cax)
+            if plot_current or plot_all:
+                if not plot_all: clear_output(wait=True)
                 
-                im = ax[2].imshow(I_exact, 
-                                 norm=LogNorm(vmin=(np.abs(electric_field)**2).max()/1e7),
-                                 extent=[-sysi.npsf//2*sysi.psf_pixelscale_lamD,
-                                         sysi.npsf//2*sysi.psf_pixelscale_lamD,
-                                         -sysi.npsf//2*sysi.psf_pixelscale_lamD,
-                                         sysi.npsf//2*sysi.psf_pixelscale_lamD])
-                ax[2].set_title('Image: Iteration {:d}'.format(i))
-                divider = make_axes_locatable(ax[2])
-                cax = divider.append_axes("right", size="4%", pad=0.075)
-                fig.colorbar(im, cax=cax)
+                imshows.imshow2(commands[i], I_est, I_exact, 
+                                lognorm2=True, lognorm3=True)
                 
                 if plot_sms:
                     sms_fig = utils.sms(U, s, alpha2, efield_ri, N_DH, Imax_unocc, i)
