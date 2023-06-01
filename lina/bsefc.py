@@ -1,18 +1,17 @@
-from wfsc_tests.math_module import xp
-from wfsc_tests import utils
+from .math_module import xp
+from . import utils
+from . import imshows
 
 import numpy as np
-
-import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from matplotlib.colors import LogNorm
-
 import astropy.units as u
 import time
 import copy
 from IPython.display import display, clear_output
 
-def build_jacobian(sysi, epsilon, dark_mask, display=False, print_status=True):
+def build_jacobian(sysi, epsilon, dark_mask, 
+                   bs_offset=(15,0),
+                   plot=False, 
+                   print_status=True):
     start = time.time()
     
     amps = np.linspace(-epsilon, epsilon, 2) # for generating a negative and positive actuator poke
@@ -27,21 +26,33 @@ def build_jacobian(sysi, epsilon, dark_mask, display=False, print_status=True):
     num_modes = sysi.Nact**2
     modes = np.eye(num_modes) # each column in this matrix represents a vectorized DM shape where one actuator has been poked
     
-    responses = xp.zeros((2*Ndh, Nacts))
+    responses_on = xp.zeros((2*Ndh, Nacts))
+    responses_off = xp.zeros((2*Ndh, Nacts))
     count = 0
     for i in range(num_modes):
         if dm_mask[i]:
-            response = 0
+            response_on = 0
+            response_off = 0
             for amp in amps:
                 mode = modes[i].reshape(sysi.Nact,sysi.Nact)
-
+                
+                sysi.source_offset = (0,0)
                 sysi.add_dm(amp*mode)
                 wavefront = sysi.calc_psf()
-                response += amp*wavefront.flatten()/np.var(amps)
+                response_on += amp*wavefront.flatten()/np.var(amps)
                 sysi.add_dm(-amp*mode)
                 
-            responses[::2,count] = response[dark_mask].real
-            responses[1::2,count] = response[dark_mask].imag
+                sysi.source_offset = bs_offset
+                sysi.add_dm(amp*mode)
+                wavefront = sysi.calc_psf()
+                response_off += amp*wavefront.flatten()/np.var(amps)
+                sysi.add_dm(-amp*mode)
+            
+            responses_on[::2,count] = response_on[dark_mask].real
+            responses_on[1::2,count] = response_on[dark_mask].imag
+            
+            responses_off[::2,count] = response_off[dark_mask].real
+            responses_off[1::2,count] = response_off[dark_mask].imag
             
             if print_status:
                 print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, Nacts, time.time()-start))
@@ -50,30 +61,34 @@ def build_jacobian(sysi, epsilon, dark_mask, display=False, print_status=True):
             pass
     print('Jacobian built in {:.3f} sec'.format(time.time()-start))
     
+    responses = xp.concatenate((responses_on, responses_off), axis=0)
+    
     return responses
 
-def run_efc_perfect(sysi, 
+def run_efc_perfect(sysi, bs_offset,
                     jac, 
-                    reg_fun,
-                    reg_conds,
+                    control_matrix,
+#                     reg_fun,
+#                     reg_conds,
                     dark_mask, 
                     Imax_unocc=1,
                     efc_loop_gain=0.5, 
                     iterations=5, 
                     plot_all=False, 
                     plot_current=True,
-                    plot_sms=True):
+                    plot_sms=True,
+                    plot_radial_contrast=True):
     # This function is only for running EFC simulations
     print('Beginning closed-loop EFC simulation.')    
     commands = []
-    efields = []
+    images = []
     
     start = time.time()
     
-    U, s, V = xp.linalg.svd(jac, full_matrices=False)
-    alpha2 = xp.max( xp.diag( xp.real( jac.conj().T @ jac ) ) )
-    print('Max singular value squared:\t', s.max()**2)
-    print('alpha^2:\t\t\t', alpha2) 
+#     U, s, V = xp.linalg.svd(jac, full_matrices=False)
+#     alpha2 = xp.max( xp.diag( xp.real( jac.conj().T @ jac ) ) )
+#     print('Max singular value squared:\t', s.max()**2)
+#     print('alpha^2:\t\t\t', alpha2) 
     
     Ndh = int(dark_mask.sum())
     
@@ -87,60 +102,50 @@ def run_efc_perfect(sysi,
     for i in range(iterations+1):
         try:
             print('\tRunning iteration {:d}/{:d}.'.format(i+1, iterations))
-
-            if i==0 or i in reg_conds[0]:
-                reg_cond_ind = np.argwhere(i==reg_conds[0])[0][0]
-                reg_cond = reg_conds[1, reg_cond_ind]
-                print('\tComputing EFC matrix via ' + reg_fun.__name__ + ' with condition value {:.2e}'.format(reg_cond))
-                efc_matrix = reg_fun(jac, reg_cond)
-
             sysi.set_dm(dm_ref + dm_command)
-
-            electric_field = sysi.calc_psf()
-
+            
+            sysi.source_offset = (0,0)
+            electric_field_on = sysi.calc_psf()
+            
+            sysi.source_offset = bs_offset
+            electric_field_off = sysi.calc_psf()
+            
+            im = xp.abs(electric_field_on)**2 + xp.abs(electric_field_off)**2
             commands.append(sysi.get_dm())
-            efields.append(copy.copy(electric_field))
+            images.append(im)
 
-            efield_ri = xp.zeros(2*Ndh)
-            efield_ri[::2] = electric_field[dark_mask].real
-            efield_ri[1::2] = electric_field[dark_mask].imag
-            del_dm = -efc_matrix.dot(efield_ri)
-
-            del_dm = utils.map_acts_to_dm(del_dm.get(), dm_mask)
-            dm_command += efc_loop_gain * del_dm
+            efield_ri_on = xp.zeros(2*Ndh)
+            efield_ri_on[::2] = electric_field_on[dark_mask].real
+            efield_ri_on[1::2] = electric_field_on[dark_mask].imag
+            
+            efield_ri_off = xp.zeros(2*Ndh)
+            efield_ri_off[::2] = electric_field_off[dark_mask].real
+            efield_ri_off[1::2] = electric_field_off[dark_mask].imag
+            
+            efield = xp.concatenate((efield_ri_on, efield_ri_off), axis=0)
+            print(efield.shape)
+            del_dm = -control_matrix.dot(efield)
+            del_dm = xp.array(utils.map_acts_to_dm(utils.ensure_np_array(del_dm), dm_mask))
+            dm_command += efc_loop_gain * utils.ensure_np_array(del_dm)
             
             if plot_current or plot_all:
-                if not display_all: clear_output(wait=True)
+                if not plot_all: clear_output(wait=True)
                 
-                im_ext = [-sysi.npsf//2*sysi.psf_pixelscale_lamD, sysi.npsf//2*sysi.psf_pixelscale_lamD,
-                          -sysi.npsf//2*sysi.psf_pixelscale_lamD, sysi.npsf//2*sysi.psf_pixelscale_lamD]
+                imshows.imshow2(commands[i], im, lognorm2=True)
                 
-                fig,ax = plt.subplots(nrows=1, ncols=2, figsize=(10,4), dpi=125)
-                
-                im = ax[0].imshow(commands[i])
-                ax[0].set_title('DM Command')
-                divider = make_axes_locatable(ax[0])
-                cax = divider.append_axes("right", size="4%", pad=0.075)
-                fig.colorbar(im, cax=cax)
-                
-                im = ax[1].imshow(utils.ensure_np_array(np.abs(electric_field)**2), cmap='magma', norm=LogNorm(), extent=im_ext)
-                ax[1].set_title('Image: Iteration {:d}'.format(i))
-                divider = make_axes_locatable(ax[1])
-                cax = divider.append_axes("right", size="4%", pad=0.075)
-                fig.colorbar(im, cax=cax)
-                
-                plt.close()
-                display(fig)
-                
-                if plot_sms:
-                    sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)
+#                 if plot_sms:
+#                     sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)
+                    
+                if plot_radial_contrast:
+                    utils.plot_radial_contrast(im, dark_mask, sysi.psf_pixelscale_lamD, nbins=30)
+                    
         except KeyboardInterrupt:
             print('EFC interrupted.')
             break
         
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
-    return commands, efields
+    return images, commands
 
 def run_efc_pwp(sysi, 
                 pwp_fun,

@@ -8,7 +8,9 @@ import time
 import copy
 from IPython.display import display, clear_output
 
-def build_jacobian(sysi, epsilon, dark_mask, display=False, print_status=True):
+def build_jacobian(sysi, epsilon, dark_mask, 
+                   plot=False, 
+                   print_status=True):
     start = time.time()
     
     amps = np.linspace(-epsilon, epsilon, 2) # for generating a negative and positive actuator poke
