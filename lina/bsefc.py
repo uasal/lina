@@ -8,7 +8,8 @@ import time
 import copy
 from IPython.display import display, clear_output
 
-def build_jacobian(sysi, epsilon, dark_mask, 
+def build_jacobian(sysi, epsilon, 
+                   dark_mask_on, dark_mask_off,
                    bs_offset=(15,0),
                    plot=False, 
                    print_status=True):
@@ -21,13 +22,14 @@ def build_jacobian(sysi, epsilon, dark_mask,
         dm_mask[sysi.bad_acts] = False
     
     Nacts = int(dm_mask.sum())
-    Ndh = int(dark_mask.sum())
+    Ndh_on = int(dark_mask_on.sum())
+    Ndh_off = int(dark_mask_off.sum())
     
     num_modes = sysi.Nact**2
     modes = np.eye(num_modes) # each column in this matrix represents a vectorized DM shape where one actuator has been poked
     
-    responses_on = xp.zeros((2*Ndh, Nacts))
-    responses_off = xp.zeros((2*Ndh, Nacts))
+    responses_on = xp.zeros((2*Ndh_on, Nacts))
+    responses_off = xp.zeros((2*Ndh_off, Nacts))
     count = 0
     for i in range(num_modes):
         if dm_mask[i]:
@@ -48,11 +50,11 @@ def build_jacobian(sysi, epsilon, dark_mask,
                 response_off += amp*wavefront.flatten()/np.var(amps)
                 sysi.add_dm(-amp*mode)
             
-            responses_on[::2,count] = response_on[dark_mask].real
-            responses_on[1::2,count] = response_on[dark_mask].imag
+            responses_on[::2,count] = response_on[dark_mask_on.ravel()].real
+            responses_on[1::2,count] = response_on[dark_mask_on.ravel()].imag
             
-            responses_off[::2,count] = response_off[dark_mask].real
-            responses_off[1::2,count] = response_off[dark_mask].imag
+            responses_off[::2,count] = response_off[dark_mask_off.ravel()].real
+            responses_off[1::2,count] = response_off[dark_mask_off.ravel()].imag
             
             if print_status:
                 print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, Nacts, time.time()-start))
@@ -70,7 +72,8 @@ def run_efc_perfect(sysi, bs_offset,
                     control_matrix,
 #                     reg_fun,
 #                     reg_conds,
-                    dark_mask, 
+                    dark_mask_on,
+                    dark_mask_off,
                     Imax_unocc=1,
                     efc_loop_gain=0.5, 
                     iterations=5, 
@@ -90,7 +93,8 @@ def run_efc_perfect(sysi, bs_offset,
 #     print('Max singular value squared:\t', s.max()**2)
 #     print('alpha^2:\t\t\t', alpha2) 
     
-    Ndh = int(dark_mask.sum())
+    Ndh_on = int(dark_mask_on.sum())
+    Ndh_off = int(dark_mask_off.sum())
     
     dm_mask = sysi.dm_mask.flatten()
     if hasattr(sysi, 'bad_acts'):
@@ -100,48 +104,44 @@ def run_efc_perfect(sysi, bs_offset,
     dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
     print()
     for i in range(iterations+1):
-        try:
-            print('\tRunning iteration {:d}/{:d}.'.format(i+1, iterations))
-            sysi.set_dm(dm_ref + dm_command)
-            
-            sysi.source_offset = (0,0)
-            electric_field_on = sysi.calc_psf()
-            
-            sysi.source_offset = bs_offset
-            electric_field_off = sysi.calc_psf()
-            
-            im = xp.abs(electric_field_on)**2 + xp.abs(electric_field_off)**2
-            commands.append(sysi.get_dm())
-            images.append(im)
+        print('\tRunning iteration {:d}/{:d}.'.format(i+1, iterations))
+        sysi.set_dm(dm_ref + dm_command)
 
-            efield_ri_on = xp.zeros(2*Ndh)
-            efield_ri_on[::2] = electric_field_on[dark_mask].real
-            efield_ri_on[1::2] = electric_field_on[dark_mask].imag
-            
-            efield_ri_off = xp.zeros(2*Ndh)
-            efield_ri_off[::2] = electric_field_off[dark_mask].real
-            efield_ri_off[1::2] = electric_field_off[dark_mask].imag
-            
-            efield = xp.concatenate((efield_ri_on, efield_ri_off), axis=0)
-            print(efield.shape)
-            del_dm = -control_matrix.dot(efield)
-            del_dm = xp.array(utils.map_acts_to_dm(utils.ensure_np_array(del_dm), dm_mask))
-            dm_command += efc_loop_gain * utils.ensure_np_array(del_dm)
-            
-            if plot_current or plot_all:
-                if not plot_all: clear_output(wait=True)
-                
-                imshows.imshow2(commands[i], im, lognorm2=True)
-                
+        sysi.source_offset = (0,0)
+        electric_field_on = sysi.calc_psf()
+
+        sysi.source_offset = bs_offset
+        electric_field_off = sysi.calc_psf()
+
+        im = xp.abs(electric_field_on)**2 + xp.abs(electric_field_off)**2
+        commands.append(sysi.get_dm())
+        images.append(im)
+
+        efield_ri_on = xp.zeros(2*Ndh_on)
+        efield_ri_on[::2] = electric_field_on[dark_mask_on].real
+        efield_ri_on[1::2] = electric_field_on[dark_mask_on].imag
+
+        efield_ri_off = xp.zeros(2*Ndh_off)
+        efield_ri_off[::2] = electric_field_off[dark_mask_off].real
+        efield_ri_off[1::2] = electric_field_off[dark_mask_off].imag
+
+        efield = xp.concatenate((efield_ri_on, efield_ri_off), axis=0)
+        print(efield.shape)
+        del_dm = -control_matrix.dot(efield)
+        del_dm = xp.array(utils.map_acts_to_dm(utils.ensure_np_array(del_dm), dm_mask))
+        dm_command += efc_loop_gain * utils.ensure_np_array(del_dm)
+
+        if plot_current or plot_all:
+            if not plot_all: clear_output(wait=True)
+
+            imshows.imshow2(commands[i], im, lognorm2=True)
+
 #                 if plot_sms:
 #                     sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)
+
+            if plot_radial_contrast:
+                utils.plot_radial_contrast(im, dark_mask_on, sysi.psf_pixelscale_lamD, nbins=30)
                     
-                if plot_radial_contrast:
-                    utils.plot_radial_contrast(im, dark_mask, sysi.psf_pixelscale_lamD, nbins=30)
-                    
-        except KeyboardInterrupt:
-            print('EFC interrupted.')
-            break
         
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     

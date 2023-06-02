@@ -81,8 +81,8 @@ def create_annular_focal_plane_mask(x, y, params, plot=False):
     mask = (r < params['outer_radius']) * (r > params['inner_radius'])
     if 'edge' in params: mask *= (x > params['edge'])
     if 'rotation' in params: mask = _scipy.ndimage.rotate(mask, params['rotation'], reshape=False, order=1)
-    if 'xshift' in params: mask = _scipy.ndimage.shift(mask, (0, params['xshift']), order=0)
-    if 'yshift' in params: mask = _scipy.ndimage.shift(mask, (params['yshift'], 0), order=0)
+    if 'x_shift' in params: mask = _scipy.ndimage.shift(mask, (0, params['x_shift']), order=1)
+    if 'y_shift' in params: mask = _scipy.ndimage.shift(mask, (params['y_shift'], 0), order=1)
     
     if plot:
         imshow1(mask)
@@ -90,8 +90,11 @@ def create_annular_focal_plane_mask(x, y, params, plot=False):
     return mask
 
 def create_box_focal_plane_mask(x, y, params):
-    x0, y0, width, height = (params['x0'], params['y0'], params['w'], params['h'])
-    mask = ( abs(x - x0) < width/2 ) * ( abs(y - y0) < height/2 )
+    xi, yi, xo, yo = (params['xi'], params['yi'], params['xo'], params['yo'])
+    mask = xp.array( (x>xi)*(x<xo)*(y>yi)*(y<yo) )
+    if 'x_shift' in params: mask = _scipy.ndimage.shift(mask, (0, params['x_shift']), order=1)
+    if 'y_shift' in params: mask = _scipy.ndimage.shift(mask, (params['y_shift'], 0), order=1)
+    
     return mask > 0
 
 def sms(U, s, alpha2, electric_field, N_DH, 

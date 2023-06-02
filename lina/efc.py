@@ -8,7 +8,8 @@ import time
 import copy
 from IPython.display import display, clear_output
 
-def build_jacobian(sysi, epsilon, dark_mask, 
+def build_jacobian(sysi, epsilon, 
+                   dark_mask,
                    plot=False, 
                    print_status=True):
     start = time.time()
