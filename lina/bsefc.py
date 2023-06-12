@@ -134,7 +134,9 @@ def run_efc_perfect(sysi, bs_offset,
         if plot_current or plot_all:
             if not plot_all: clear_output(wait=True)
 
-            imshows.imshow2(commands[i], im, lognorm2=True)
+            imshows.imshow2(commands[i], im, 
+                            'DM Command', 'Image: Iteration {:d}'.format(i), 
+                            pxscl2=sysi.psf_pixelscale_lamD, lognorm2=True)
 
 #                 if plot_sms:
 #                     sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)
