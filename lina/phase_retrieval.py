@@ -46,11 +46,7 @@ def fdpr(fit_mask, images, defocus_values, tol=1e-6, reg=0, wreg=10):
     # run phase retrieval
     prdict = run_phase_retrieval(psfs_sq, fit_mask, tol, reg, wreg, Ediv, modes=modes, fit_amp=False)
 
-    # a bit of resizing
-    prcopy = deepcopy(prdict)
-    est = prcopy['phase_est'][80:179, 80:179]
-
-    return est
+    return prdict
 
 
 
