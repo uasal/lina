@@ -40,4 +40,9 @@ def update_np(module):
 def update_scipy(module):
     _scipy._srcmodule = module
         
-        
+def ensure_np_array(arr):
+    if isinstance(arr, np.ndarray):
+        return arr
+    else:
+        return arr.get()
+  

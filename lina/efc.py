@@ -10,8 +10,8 @@ from IPython.display import display, clear_output
 
 def build_jacobian(sysi, epsilon, 
                    dark_mask,
-                   plot=False, 
-                   print_status=True):
+                   plot=False,
+                  ):
     start = time.time()
     
     amps = np.linspace(-epsilon, epsilon, 2) # for generating a negative and positive actuator poke
@@ -28,6 +28,7 @@ def build_jacobian(sysi, epsilon,
     
     responses = xp.zeros((2*Ndh, Nacts))
     count = 0
+    print('Calculating Jacobian: ')
     for i in range(num_modes):
         if dm_mask[i]:
             response = 0
@@ -39,14 +40,15 @@ def build_jacobian(sysi, epsilon,
                 response += amp*wavefront.flatten()/np.var(amps)
                 sysi.add_dm(-amp*mode)
                 
-            responses[::2,count] = response[dark_mask].real
-            responses[1::2,count] = response[dark_mask].imag
+            responses[::2,count] = response[dark_mask.ravel()].real
+            responses[1::2,count] = response[dark_mask.ravel()].imag
             
-            if print_status:
-                print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, Nacts, time.time()-start))
+            print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, Nacts, time.time()-start), end='')
+            print("\r", end="")
             count += 1
         else:
             pass
+    print()
     print('Jacobian built in {:.3f} sec'.format(time.time()-start))
     
     return responses
@@ -86,38 +88,35 @@ def run_efc_perfect(sysi,
     dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
     print()
     for i in range(iterations+1):
-        try:
-            print('\tRunning iteration {:d}/{:d}.'.format(i+1, iterations))
-            sysi.set_dm(dm_ref + dm_command)
+        print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
+        sysi.set_dm(dm_ref + dm_command)
 
-            electric_field = sysi.calc_psf()
+        electric_field = sysi.calc_psf()
 
-            commands.append(sysi.get_dm())
-            efields.append(copy.copy(electric_field))
+        commands.append(sysi.get_dm())
+        efields.append(copy.copy(electric_field))
 
-            efield_ri = xp.zeros(2*Ndh)
-            efield_ri[::2] = electric_field[dark_mask].real
-            efield_ri[1::2] = electric_field[dark_mask].imag
-            del_dm = -control_matrix.dot(efield_ri)
+        efield_ri = xp.zeros(2*Ndh)
+        efield_ri[::2] = electric_field[dark_mask].real
+        efield_ri[1::2] = electric_field[dark_mask].imag
+        del_dm = -control_matrix.dot(efield_ri)
 
-            del_dm = xp.array(utils.map_acts_to_dm(utils.ensure_np_array(del_dm), dm_mask))
-            dm_command += efc_loop_gain * utils.ensure_np_array(del_dm)
+        del_dm = xp.array(utils.map_acts_to_dm(utils.ensure_np_array(del_dm), dm_mask))
+        dm_command += efc_loop_gain * utils.ensure_np_array(del_dm)
+
+        if plot_current or plot_all:
+
+            imshows.imshow2(commands[i], xp.abs(efields[i])**2, 
+                            'DM Command', 'Image: Iteration {:d}'.format(i),
+                            lognorm2=True)
+
+            if plot_sms:
+                sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)
+
+            if plot_radial_contrast:
+                utils.plot_radial_contrast(xp.abs(efields[i])**2, dark_mask, sysi.psf_pixelscale_lamD, nbins=100)
             
-            if plot_current or plot_all:
-                if not plot_all: clear_output(wait=True)
-                
-                imshows.imshow2(commands[i], xp.abs(efields[i])**2, lognorm2=True)
-                
-                if plot_sms:
-                    sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)
-                    
-                if plot_radial_contrast:
-                    utils.plot_radial_contrast(xp.abs(efields[i])**2, dark_mask, sysi.psf_pixelscale_lamD, nbins=30)
-                    
-        except KeyboardInterrupt:
-            print('EFC interrupted.')
-            break
-        
+            if not plot_all: clear_output(wait=True)
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
     return commands, efields
