@@ -1,4 +1,4 @@
-from .math_module import xp, _scipy, cupy_avail
+from .math_module import xp, _scipy, ensure_np_array, cupy_avail
 if cupy_avail:
     import cupy as cp
 else:
@@ -12,12 +12,6 @@ import scipy
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colors import LogNorm
-
-def ensure_np_array(arr):
-    if isinstance(arr, np.ndarray):
-        return arr
-    else:
-        return arr.get()
 
 def pad_or_crop( arr_in, npix ):
     n_arr_in = arr_in.shape[0]
