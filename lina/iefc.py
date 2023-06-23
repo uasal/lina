@@ -1,4 +1,5 @@
-from .math_module import xp
+from .math_module import xp, _scipy, ensure_np_array
+from . import utils
 from . import imshows
 
 import numpy as np
@@ -46,7 +47,7 @@ def calibrate(sysi,
               start_mode=0,
               return_all=False, 
              plot_sum=True):
-    print('Calibrating I-EFC...')
+    print('Calibrating iEFC...')
     response_cube = []
     response_matrix = []
     # Loop through all modes that you want to control
@@ -61,9 +62,11 @@ def calibrate(sysi,
 
             response += s * differential_images / (2 * calibration_amplitude)
         print("\tCalibrated mode {:d} / {:d} in {:.3f}s".format(ci+1+start_mode, calibration_modes.shape[0], 
-                                                                time.time()-start))
+                                                                time.time()-start), end='')
+        print("\r", end="")
         response_cube.append(response)
-        response_matrix.append(xp.concatenate([response[0, control_mask], response[1, control_mask]])) # masked response for each probe mode 
+        response_matrix.append(xp.concatenate([response[0, control_mask.ravel()], 
+                                               response[1, control_mask.ravel()]])) # masked response for each probe mode 
     print('Calibration complete.')
     
     response_matrix = xp.array(response_matrix).T
@@ -101,7 +104,7 @@ def run(sysi,
         plot_current=True,
         plot_all=False,
         plot_radial_contrast=True):
-    print('Running I-EFC...')
+    print('Running iEFC...')
     start = time.time()
     
     metric_images = []
@@ -125,16 +128,16 @@ def run(sysi,
         command = (1.0-leakage)*command + loop_gain*delta_coefficients
         
         # Reconstruct the full phase from the Fourier modes
-        dm_command = calibration_modes.T.dot(utils.ensure_np_array(command)).reshape(sysi.Nact,sysi.Nact)
+        dm_command = calibration_modes.T.dot(ensure_np_array(command)).reshape(sysi.Nact,sysi.Nact)
         
         if plot_current: 
             if not plot_all: clear_output(wait=True)
-            imshows.imshow2(dm_commands[i], utils.ensure_np_array(image),
+            imshows.imshow2(dm_commands[i], ensure_np_array(image),
                             'DM Command', 'Image: Iteration {:d}'.format(i),
                             pxscl2=sysi.psf_pixelscale_lamD, lognorm2=True,)
             if plot_radial_contrast:
                 utils.plot_radial_contrast(image, control_mask, sysi.psf_pixelscale_lamD, nbins=30)
-    print('I-EFC loop completed in {:.3f}s.'.format(time.time()-start))
+    print('iEFC loop completed in {:.3f}s.'.format(time.time()-start))
     return metric_images, dm_commands
 
 

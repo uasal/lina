@@ -38,7 +38,12 @@ def map_acts_to_dm(actuators, dm_mask, Nact=34):
     return command
 
 # Create control matrix
-def WeightedLeastSquares(A, W, rcond=1e-15):
+def WeightedLeastSquares(A, weight_map, nprobes=2, rcond=1e-15):
+    control_mask = weight_map > 0
+    w = weight_map[control_mask]
+    for i in range(nprobes-1):
+        w = np.concatenate((w, weight_map[control_mask]))
+    W = np.diag(w)
     cov = A.T.dot(W.dot(A))
     return xp.linalg.inv(cov + rcond * xp.diag(cov).max() * xp.eye(A.shape[1])).dot( A.T.dot(W) )
 
@@ -321,7 +326,7 @@ def create_sinc_probe(Nacts, amp, probe_radius, probe_phase=0, offset=(0,0), bad
         probe_commands = amp * np.sinc(f*Xacts)*np.sinc(f*Yacts)
     return probe_commands
 
-def create_sinc_probes(Npairs, Nacts, dm_mask, probe_amplitude, probe_radius=10, probe_offset=(0,0), display=False):
+def create_sinc_probes(Npairs, Nact, dm_mask, probe_amplitude, probe_radius=10, probe_offset=(0,0)):
     
     probe_phases = np.linspace(0, np.pi*(Npairs-1)/Npairs, Npairs)
     
@@ -332,7 +337,7 @@ def create_sinc_probes(Npairs, Nacts, dm_mask, probe_amplitude, probe_radius=10,
         else:
             axis = 'y'
             
-        probe = create_sinc_probe(Nacts, probe_amplitude, probe_radius, probe_phases[i], offset=probe_offset, bad_axis=axis)
+        probe = create_sinc_probe(Nact, probe_amplitude, probe_radius, probe_phases[i], offset=probe_offset, bad_axis=axis)
             
         probes.append(probe*dm_mask)
     

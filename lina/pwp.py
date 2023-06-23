@@ -1,12 +1,8 @@
-from wfsc_tests.math_module import xp
-from wfsc_tests import utils
+from .math_module import xp, _scipy, ensure_np_array
+from . import utils
+from . import imshows
 
 import numpy as np
-
-import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-
 import astropy.units as u
 from astropy.io import fits
 from pathlib import Path
@@ -20,7 +16,8 @@ def run_pwp_bp(sysi,
                dark_mask, 
                probes,
                use='J', jacobian=None, model=None, 
-               plot=False):
+               plot=False
+               plot_est=False):
     Ndh = int(dark_mask.sum())
     
     dm_ref = sysi.get_dm()
@@ -41,31 +38,7 @@ def run_pwp_bp(sysi,
             sysi.add_dm(-amp*probe) # remove probe from DM
             
         if plot:
-            im_ext = [-sysi.npsf//2*sysi.psf_pixelscale_lamD, sysi.npsf//2*sysi.psf_pixelscale_lamD,
-                      -sysi.npsf//2*sysi.psf_pixelscale_lamD, sysi.npsf//2*sysi.psf_pixelscale_lamD]
-            
-            fig,ax = plt.subplots(nrows=1, ncols=3, figsize=(10,4), dpi=125)
-            
-            im = ax[0].imshow(utils.ensure_np_array(Ip[i]), cmap='magma', extent=im_ext, norm=LogNorm())
-            ax[0].set_title('Positive Probe Image')
-            divider = make_axes_locatable(ax[0])
-            cax = divider.append_axes("right", size="4%", pad=0.075)
-            fig.colorbar(im, cax=cax)
-            
-            im = ax[1].imshow(utils.ensure_np_array(In[i]), cmap='magma', extent=im_ext, norm=LogNorm())
-            ax[1].set_title('Negative Probe Image')
-            divider = make_axes_locatable(ax[1])
-            cax = divider.append_axes("right", size="4%", pad=0.075)
-            fig.colorbar(im, cax=cax)
-            
-            im = ax[2].imshow(utils.ensure_np_array(Ip[i]-In[i]), cmap='magma', extent=im_ext)
-            ax[2].set_title('Difference')
-            divider = make_axes_locatable(ax[2])
-            cax = divider.append_axes("right", size="4%", pad=0.075)
-            fig.colorbar(im, cax=cax)
-            
-            plt.close()
-            display(fig)
+            imshows.imshow3(Ip[i], In[i], Ip[i]-In[i], lognorm1=True, lognorm2=True, pxscl=sysi.psf_pixelscale_lamD)
             
     E_probes = xp.zeros((probes.shape[0], 2*Ndh))
     I_diff = xp.zeros((probes.shape[0], Ndh))
@@ -83,25 +56,9 @@ def run_pwp_bp(sysi,
             E_probe = E_full_probe - E_full
             
         if plot:
-            import misc_funs as misc
             E_probe_2d = xp.zeros((sysi.npsf,sysi.npsf), dtype=np.complex128)
             xp.place(E_probe_2d, mask=dark_mask, vals=E_probe)
-            fig,ax = plt.subplots(nrows=1, ncols=2, figsize=(10,4), dpi=125)
-            
-            im = ax[0].imshow(utils.ensure_np_array(xp.abs(E_probe_2d)), cmap='magma', extent=im_ext)
-            ax[0].set_title('Probe Amplitude')
-            divider = make_axes_locatable(ax[0])
-            cax = divider.append_axes("right", size="4%", pad=0.075)
-            fig.colorbar(im, cax=cax)
-            
-            im = ax[1].imshow(utils.ensure_np_array(xp.angle(E_probe_2d)), cmap='magma', extent=im_ext)
-            ax[1].set_title('Probe Amplitude')
-            divider = make_axes_locatable(ax[1])
-            cax = divider.append_axes("right", size="4%", pad=0.075)
-            fig.colorbar(im, cax=cax)
-            
-            plt.close()
-            display(fig)
+            imshows.imshow2(xp.abs(E_probe_2d), xp.angle(E_probe_2d))
             
         E_probes[i, ::2] = E_probe.real
         E_probes[i, 1::2] = E_probe.imag
@@ -109,7 +66,7 @@ def run_pwp_bp(sysi,
         I_diff[i:(i+1), :] = (Ip[i] - In[i])[dark_mask]
     
     # Use batch process to estimate each pixel individually
-    E_est = np.zeros(Ndh, dtype=cp.complex128)
+    E_est = xp.zeros(Ndh, dtype=xp.complex128)
     for i in range(Ndh):
         delI = I_diff[:, i]
         M = 4*xp.array([E_probes[:,2*i], E_probes[:,2*i + 1]]).T
@@ -119,9 +76,11 @@ def run_pwp_bp(sysi,
 
         E_est[i] = est[0] + 1j*est[1]
         
-    E_est_2d = xp.zeros((sysi.npsf,sysi.npsf), dtype=np.complex128)
+    E_est_2d = xp.zeros((sysi.npsf,sysi.npsf), dtype=xp.complex128)
     xp.place(E_est_2d, mask=dark_mask, vals=E_est)
     
+    if plot or plot_est:
+        imshows.imshow2(xp.abs(E_est_2d), xp.angle(E_est_2d), lognorm1=True, pxscl=sysi.psf_pixelscale_lamD)
     return E_est_2d
 
 def run_pwp_redmond(sysi, dark_mask, 
