@@ -16,7 +16,7 @@ def run_pwp_bp(sysi,
                dark_mask, 
                probes,
                use='J', jacobian=None, model=None, 
-               plot=False
+               plot=False,
                plot_est=False):
     Ndh = int(dark_mask.sum())
     
