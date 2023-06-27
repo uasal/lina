@@ -124,16 +124,16 @@ def run_efc_perfect(sysi,
 def run_efc_pwp(sysi, 
                 pwp_fun,
                 pwp_kwargs,
-                jac, 
-                reg_fun,
-                reg_conds,
+                jac,
+                control_matrix,
                 dark_mask, 
                 Imax_unocc=1,
                 efc_loop_gain=0.5, 
                 iterations=5, 
-                display_all=False, 
-                display_current=True,
-                plot_sms=True):
+                plot_all=False, 
+                plot_current=True,
+                plot_sms=True,
+                plot_radial_contrast=True):
     print('Beginning closed-loop EFC simulation.')
     
     commands = []
@@ -147,7 +147,7 @@ def run_efc_pwp(sysi,
     print('Max singular value squared:\t', s.max()**2)
     print('alpha^2:\t\t\t', alpha2) 
     
-    N_DH = dark_mask.sum()
+    Nmask = int(dark_mask.sum())
     
     dm_mask = sysi.dm_mask.flatten()
     if hasattr(sysi, 'bad_acts'):
@@ -155,52 +155,41 @@ def run_efc_pwp(sysi,
     
     dm_ref = sysi.get_dm()
     dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
-    efield_ri = np.zeros(2*dark_mask.sum())
+    efield_ri = xp.zeros(2*Nmask)
     for i in range(iterations+1):
-        try:
-            print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
-            
-            if i==0 or i in reg_conds[0]:
-                reg_cond_ind = np.argwhere(i==reg_conds[0])[0][0]
-                reg_cond = reg_conds[1, reg_cond_ind]
-                print('\tComputing EFC matrix via ' + reg_fun.__name__ + ' with condition value {:.2e}'.format(reg_cond))
-                efc_matrix = reg_fun(jac, reg_cond)
-                
-            sysi.set_dm(dm_ref + dm_command)
-            E_est = pwp_fun(sysi, dark_mask, **pwp_kwargs)
-            I_exact = sysi.snap()
-            
-            I_est = np.abs(E_est)**2
-            rms_est = np.sqrt(np.mean(I_est[dark_mask]**2))
-            rms_im = np.sqrt(np.mean(I_exact[dark_mask]**2))
-            mf = rms_est/rms_im # measure how well the estimate and image match
-            
-            commands.append(sysi.get_dm())
-            efields.append(copy.copy(E_est))
-            images.append(copy.copy(I_exact))
+        print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
+        sysi.set_dm(dm_ref + dm_command)
+        E_est = pwp_fun(sysi, dark_mask, **pwp_kwargs)
+        I_est = xp.abs(E_est)**2
+        I_exact = sysi.snap()
 
-            efield_ri[::2] = E_est[dark_mask].real
-            efield_ri[1::2] = E_est[dark_mask].imag
-            del_dm = -efc_matrix.dot(efield_ri)
-            
-            del_dm = utils.map_acts_to_dm(del_dm, dm_mask)
-            dm_command += efc_loop_gain * del_dm
-            
-            if plot_current or plot_all:
-                if not plot_all: clear_output(wait=True)
-                
-                imshows.imshow2(commands[i], I_est, I_exact, 
-                                lognorm2=True, lognorm3=True)
-                
-                if plot_sms:
-                    sms_fig = utils.sms(U, s, alpha2, efield_ri, N_DH, Imax_unocc, i)
-                    
-                if plot_radial_contrast:
-                    utils.plot_radial_contrast(images[-1], control_mask, sysi.psf_pixelscale_lamD, nbins=30)
-                    
-        except KeyboardInterrupt:
-            print('EFC interrupted.')
-            break
+        rms_est = np.sqrt(np.mean(I_est[dark_mask]**2))
+        rms_im = np.sqrt(np.mean(I_exact[dark_mask]**2))
+        mf = rms_est/rms_im # measure how well the estimate and image match
+
+        commands.append(sysi.get_dm())
+        efields.append(copy.copy(E_est))
+        images.append(copy.copy(I_exact))
+
+        efield_ri[::2] = E_est[dark_mask].real
+        efield_ri[1::2] = E_est[dark_mask].imag
+        del_dm = -control_matrix.dot(efield_ri)
+
+        del_dm = sysi.map_actuators_to_command(del_dm)
+        dm_command += efc_loop_gain * del_dm
+
+        if plot_current or plot_all:
+            if not plot_all: clear_output(wait=True)
+
+            imshows.imshow3(commands[i], I_est, I_exact, 
+                            lognorm2=True, lognorm3=True)
+
+            if plot_sms:
+                sms_fig = utils.sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
+
+            if plot_radial_contrast:
+                utils.plot_radial_contrast(images[-1], dark_mask, sysi.psf_pixelscale_lamD, nbins=100)
+
         
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
