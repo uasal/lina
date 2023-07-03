@@ -37,9 +37,21 @@ def build_jacobian(sysi, epsilon,
 
                 sysi.add_dm(amp*mode)
                 wavefront = sysi.calc_psf()
-                response += amp*wavefront.flatten()/np.var(amps)
+                response += amp * wavefront.flatten() / np.var(amps)
                 sysi.add_dm(-amp*mode)
-                
+            
+#             sysi.add_dm(epsilon*mode)
+#             wavefront = sysi.calc_psf()
+#             response = wavefront.flatten()
+#             sysi.add_dm(-epsilon*mode)
+            
+#             sysi.add_dm(-epsilon*mode)
+#             wavefront = sysi.calc_psf()
+#             response -= wavefront.flatten()
+#             sysi.add_dm(epsilon*mode)
+            
+#             response /= 2*epsilon
+            
             responses[::2,count] = response[dark_mask.ravel()].real
             responses[1::2,count] = response[dark_mask.ravel()].imag
             

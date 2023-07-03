@@ -42,8 +42,8 @@ def WeightedLeastSquares(A, weight_map, nprobes=2, rcond=1e-15):
     control_mask = weight_map > 0
     w = weight_map[control_mask]
     for i in range(nprobes-1):
-        w = np.concatenate((w, weight_map[control_mask]))
-    W = np.diag(w)
+        w = xp.concatenate((w, weight_map[control_mask]))
+    W = xp.diag(w)
     cov = A.T.dot(W.dot(A))
     return xp.linalg.inv(cov + rcond * xp.diag(cov).max() * xp.eye(A.shape[1])).dot( A.T.dot(W) )
 
@@ -254,7 +254,7 @@ def select_fourier_modes(sysi, control_mask, fourier_sampling=0.75, use='both'):
         
     return np.array(modes), sampled_fs
 
-def create_fourier_probes(fourier_modes, Nact=48, plot=False): 
+def create_fourier_probes(fourier_modes, Nact=34, plot=False): 
     # make 2 probe modes from the sum of the cos and sin fourier modes
     nfs = fourier_modes.shape[0]//2
     probe1 = fourier_modes[:nfs].sum(axis=0).reshape(Nact,Nact)
