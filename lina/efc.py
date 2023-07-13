@@ -1,4 +1,4 @@
-# loads a backend for calculations, basically the GPU
+# loads a backend for calculations performed using the GPU
 from .math_module import xp
 
 from . import utils
@@ -33,8 +33,11 @@ def build_jacobian(sysi, epsilon,
     for i in range(num_modes):
         if dm_mask[i]:
             response = 0
-            # Only calculate the jacobian if the actuator is good
+            # Only calculate the jacobian if the actuator is unmasked
             # otherwise it's just left as zero.
+            # the if statements can't be combined because we still need 
+            # to calculate areas of the pupil where bad actuators exist
+            # and maintain compatible array sizes
             if dm_bad_act_mask[i]:
                 for amp in amps:
                     mode = modes[i].reshape(sysi.Nact,sysi.Nact)
@@ -52,7 +55,7 @@ def build_jacobian(sysi, epsilon,
                     # add the responses.
 
                     # The factor of two may be missing, and Kian is looking at this.
-                    response += amp*wavefront.flatten()/np.var(amps) # why divide by the variance
+                    response += amp*wavefront.flatten()/np.var(amps)
                     #removes the poke
                     sysi.add_dm(-amp*mode)
                 
@@ -87,7 +90,6 @@ def run_efc_perfect(sysi,
     # This method is called "perfect" because it assumes that 
     # there is perfect knowledge of the electric field.
     
-    # This function is only for running EFC simulations
     print('Beginning closed-loop EFC simulation.')    
     commands = []
     efields = []
@@ -107,7 +109,6 @@ def run_efc_perfect(sysi,
     U, s, V = xp.linalg.svd(jac, full_matrices=False)
     
     # Calculates alpha2 (see notes in utils.beta_reg)
-    # This isn't using beta regularization- why? HELP
     # 
     # Coding note:
     # If this is a time consuming calculation then I think 
@@ -150,8 +151,6 @@ def run_efc_perfect(sysi,
 
         # exclude movements of bad actuators
         del_dm *= sysi.dm_bad_act_mask
-        # print(f'{del_dm.shape=},{type(del_dm)}')
-        # print(f'{sysi.dm_bad_act_mask.shape=},{type(sysi.dm_bad_act_mask)}')
 
         # Calculate new dm command for the next iteration
         # multiples by the gain for convergence stability
@@ -163,7 +162,7 @@ def run_efc_perfect(sysi,
                             'DM Command', f'Image: Iteration {i:d} E-field','dm_ref',
                             lognorm2=True)
             imshows.imshow3(del_dm, sysi.dm_bad_act_mask, del_dm*sysi.dm_bad_act_mask,
-                    'DM Command', 'mask','DM Command*mask',
+                    'DM Command', 'bad actuator mask','DM Command*mask',
                     lognorm2=False)
 
             sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i, display=plot_sms)
