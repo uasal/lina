@@ -42,8 +42,8 @@ def WeightedLeastSquares(A, weight_map, nprobes=2, rcond=1e-15):
     control_mask = weight_map > 0
     w = weight_map[control_mask]
     for i in range(nprobes-1):
-        w = np.concatenate((w, weight_map[control_mask]))
-    W = np.diag(w)
+        w = xp.concatenate((w, weight_map[control_mask]))
+    W = xp.diag(w)
     cov = A.T.dot(W.dot(A))
     return xp.linalg.inv(cov + rcond * xp.diag(cov).max() * xp.eye(A.shape[1])).dot( A.T.dot(W) )
 
@@ -53,12 +53,30 @@ def TikhonovInverse(A, rcond=1e-15):
     return (Vt.T * s_inv).dot(U.T)
 
 def beta_reg(S, beta=-1):
-    # S is the sensitivity matrix also known as the Jacobian
-    sts = xp.matmul(S.T, S)
-    rho = xp.diag(sts)
-    alpha2 = rho.max()
+    # This follows from equations 4 and 5 of the paper of Sidick et al 2017 (SPIE)
+    # The gain matrix is derived from the Jacobian (response matrix) but  
+    # includes penalty functions introduced that limit actuator combinations
 
+    # The beta value dictates which control modes are penalized, and are indepenent 
+    # upon the optical system (coronagraph type etc). This is useful to compare
+    # how different optical systems perform (e.g. coronagraph setups).
+
+    # rho indicates the relative actuator strength (meaning which have a 
+    # stronger influence on the contrast for a given unit of movement)
+
+    # Alpha^2 = maximum of the rho vector and therefore varies depending upon
+    # the opto-mechanical control system being used. It's not particularly
+    # meaningful on its own, but is useful for calculating 
+    # the Singular mode spectrum defined in section 4.1 (eqn 7) of the paper.
+
+    # S is the sensitivity matrix (aka the Jacobian)
+    sts = xp.matmul(S.T, S)  
+    rho = xp.diag(sts) # takes diagonal values 
+    alpha2 = rho.max() # takes the maximum of the diagonal
+
+    # This is equation 5 of the paper
     gain_matrix = xp.matmul( xp.linalg.inv( sts + alpha2*10.0**(beta)*xp.eye(sts.shape[0]) ), S.T)
+    # Actually is the relationship between a poke and the EF in the focal plane.
     return gain_matrix
 
 def create_circ_mask(h, w, center=None, radius=None):
@@ -98,7 +116,12 @@ def create_box_focal_plane_mask(x, y, params):
 
 def sms(U, s, alpha2, electric_field, N_DH, 
         Imax_unocc, 
-        itr): 
+        itr, display=True): 
+    '''Calculates the Singular Mode Spectrum.
+    This is from section 4 of the Sidick et al 2012 paper (equation 7).
+    Note the sum of the sms equals to the normalized intensity.
+    '''
+     
     # jac: system jacobian
     # electric_field: the electric field acquired by estimation or from the model
     
@@ -126,7 +149,8 @@ def sms(U, s, alpha2, electric_field, N_DH,
     plt.ylabel('SMS')
     plt.grid()
     plt.close()
-    display(fig)
+    if display:
+        display(fig)
     
     return fig
 
