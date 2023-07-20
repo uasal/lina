@@ -67,6 +67,7 @@ def calibrate(sysi,
         response_cube.append(response)
         response_matrix.append(xp.concatenate([response[0, control_mask.ravel()], 
                                                response[1, control_mask.ravel()]])) # masked response for each probe mode 
+    print()
     print('Calibration complete.')
     
     response_matrix = xp.array(response_matrix).T
@@ -134,9 +135,10 @@ def run(sysi,
             if not plot_all: clear_output(wait=True)
             imshows.imshow2(dm_commands[i], ensure_np_array(image),
                             'DM Command', 'Image: Iteration {:d}'.format(i),
-                            pxscl2=sysi.psf_pixelscale_lamD, lognorm2=True,)
+                            pxscl2=sysi.psf_pixelscale_lamD, lognorm2=True,
+                            vmin2=1e-10)
             if plot_radial_contrast:
-                utils.plot_radial_contrast(image, control_mask, sysi.psf_pixelscale_lamD, nbins=30)
+                utils.plot_radial_contrast(image, control_mask, sysi.psf_pixelscale_lamD, nbins=100)
     print('iEFC loop completed in {:.3f}s.'.format(time.time()-start))
     return metric_images, dm_commands
 
