@@ -34,7 +34,7 @@ def estimate_coherent(sysi, r_npix=0, shift=(0,0), plot=False):
     if plot:
         imshows.imshow3(mask, xp.abs(im_fft_shift), xp.abs(im_fft_masked), lognorm2=True, lognorm3=True)
     
-    E_est = xp.fft.ifftshift(xp.fft.fft2(im_fft_masked))
+    E_est = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(im_fft_masked)))
     
     return E_est
 
