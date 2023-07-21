@@ -1,7 +1,6 @@
 from .math_module import xp
 from . import utils, scc
 from . import imshows
-from . import scc
 
 import numpy as np
 import astropy.units as u
