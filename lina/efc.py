@@ -1,5 +1,5 @@
 from .math_module import xp
-from . import utils
+from . import utils, scc
 from . import imshows
 
 import numpy as np
@@ -56,8 +56,8 @@ def build_jacobian(sysi, epsilon,
 
 def build_jacobian_scc(sysi, epsilon, 
                        dark_mask,
-                       **scc_kwargs,
                        plot=False,
+                       **scc_kwargs,
                       ):
     '''
     This can be done on the actual testbed with individual pokes
@@ -248,8 +248,6 @@ def run_efc_pwp(sysi,
 
 
 def run_efc_scc(sysi, 
-                pwp_fun,
-                pwp_kwargs,
                 jac,
                 control_matrix,
                 dark_mask, 
@@ -259,7 +257,8 @@ def run_efc_scc(sysi,
                 plot_all=False, 
                 plot_current=True,
                 plot_sms=True,
-                plot_radial_contrast=True):
+                plot_radial_contrast=True,
+                **scc_kwargs,):
     print('Beginning closed-loop EFC simulation.')
     
     commands = []
@@ -285,8 +284,8 @@ def run_efc_scc(sysi,
     for i in range(iterations+1):
         print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
         sysi.set_dm(dm_ref + dm_command)
-        E_scc = scc_fun(sysi, **scc_kwargs)
-        I_scc = xp.abs(E_scc)**2
+        E_est = scc.estimate_coherent(sysi, **scc_kwargs)
+        I_est = xp.abs(E_est)**2
         I_exact = sysi.snap()
 
         rms_est = np.sqrt(np.mean(I_est[dark_mask]**2))
