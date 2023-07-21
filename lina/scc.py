@@ -14,7 +14,9 @@ def estimate_coherent(sysi, r_npix=0, shift=(0,0), plot=False):
     
     im = sysi.snap()
     
-    im_fft = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(im)))
+    im_fft = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(im), norm='ortho'))
+    im_fft_sum = xp.sum(xp.abs(im_fft))
+    
     if plot:
         imshows.imshow2(xp.abs(im_fft), xp.angle(im_fft), lognorm1=True)
     im_fft_shift = _scipy.ndimage.shift(im_fft, shift)
@@ -24,12 +26,15 @@ def estimate_coherent(sysi, r_npix=0, shift=(0,0), plot=False):
     
     r = xp.sqrt(x**2 + y**2)
     mask = r<r_npix
-    im_fft_masked = mask*xp.abs(im_fft_shift)
+    im_fft_masked = mask*im_fft_shift
+    im_fft_masked_sum = xp.sum(xp.abs(im_fft_masked))
+    
+    im_fft_masked *= xp.sqrt((im_fft_sum-im_fft_masked_sum)/im_fft_masked_sum)
     
     if plot:
-        imshows.imshow3(mask, xp.abs(im_fft_shift), im_fft_masked, lognorm2=True, lognorm3=True)
+        imshows.imshow3(mask, xp.abs(im_fft_shift), xp.abs(im_fft_masked), lognorm2=True, lognorm3=True)
     
-    E_est = xp.fft.fftshift(xp.fft.ifft2(im_fft_masked))
+    E_est = xp.fft.ifftshift(xp.fft.fft2(im_fft_masked))
     
     return E_est
 
