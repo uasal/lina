@@ -1,6 +1,7 @@
 from .math_module import xp
 from . import utils
 from . import imshows
+from . import scc
 
 import numpy as np
 import astropy.units as u
@@ -56,8 +57,9 @@ def build_jacobian(sysi, epsilon,
 
 def build_jacobian_scc(sysi, epsilon, 
                        dark_mask,
-                       **scc_kwargs,
                        plot=False,
+                       **scc_kwargs,
+                       
                       ):
     '''
     This can be done on the actual testbed with individual pokes
