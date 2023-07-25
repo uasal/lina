@@ -1,7 +1,6 @@
 from .math_module import xp
 from . import utils, scc
 from . import imshows
-from . import scc
 
 import numpy as np
 import astropy.units as u
@@ -88,6 +87,7 @@ def build_jacobian_scc(sysi, epsilon,
 
                 sysi.add_dm(amp*mode)
                 wavefront = scc.estimate_coherent(sysi, **scc_kwargs)
+                wavefront *= dark_mask
                 response += amp * wavefront.flatten() / (2*np.var(amps))
                 sysi.add_dm(-amp*mode)
             
@@ -286,6 +286,7 @@ def run_efc_scc(sysi,
         print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
         sysi.set_dm(dm_ref + dm_command)
         E_est = scc.estimate_coherent(sysi, **scc_kwargs)
+        E_est *= dark_mask
         I_est = xp.abs(E_est)**2
         I_exact = sysi.snap()
 
