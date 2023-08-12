@@ -9,7 +9,7 @@ import copy
 from IPython.display import display, clear_output
 
 def build_jacobian(sysi, epsilon, 
-                   dark_mask,
+                   control_mask,
                    plot=False,
                   ):
     start = time.time()
@@ -17,16 +17,16 @@ def build_jacobian(sysi, epsilon,
     amps = np.linspace(-epsilon, epsilon, 2) # for generating a negative and positive actuator poke
     
     dm_mask = sysi.dm_mask.flatten()
-    if hasattr(sysi, 'bad_acts'):
+    if sysi.bad_acts is not None:
         dm_mask[sysi.bad_acts] = False
     
     Nacts = int(dm_mask.sum())
-    Ndh = int(dark_mask.sum())
+    Nmask = int(control_mask.sum())
     
     num_modes = sysi.Nact**2
     modes = np.eye(num_modes) # each column in this matrix represents a vectorized DM shape where one actuator has been poked
     
-    responses = xp.zeros((2*Ndh, Nacts))
+    responses = xp.zeros((2*Nmask, Nacts))
     count = 0
     print('Calculating Jacobian: ')
     for i in range(num_modes):
@@ -40,8 +40,8 @@ def build_jacobian(sysi, epsilon,
                 response += amp * wavefront.flatten() / (2*np.var(amps))
                 sysi.add_dm(-amp*mode)
             
-            responses[::2,count] = response[dark_mask.ravel()].real
-            responses[1::2,count] = response[dark_mask.ravel()].imag
+            responses[::2,count] = response[control_mask.ravel()].real
+            responses[1::2,count] = response[control_mask.ravel()].imag
             
             print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, Nacts, time.time()-start), end='')
             print("\r", end="")
@@ -55,7 +55,7 @@ def build_jacobian(sysi, epsilon,
 
 
 def build_jacobian_scc(sysi, epsilon, 
-                       dark_mask,
+                       control_mask,
                        plot=False,
                        **scc_kwargs,
                       ):
@@ -67,16 +67,16 @@ def build_jacobian_scc(sysi, epsilon,
     amps = np.linspace(-epsilon, epsilon, 2) # for generating a negative and positive actuator poke
     
     dm_mask = sysi.dm_mask.flatten()
-    if hasattr(sysi, 'bad_acts'):
-        dm_mask[sysi.bad_acts] = False
+#     if hasattr(sysi, 'bad_acts'):
+#         dm_mask[sysi.bad_acts] = False
     
     Nacts = int(dm_mask.sum())
-    Ndh = int(dark_mask.sum())
+    Nmask = int(control_mask.sum())
     
     num_modes = sysi.Nact**2
     modes = np.eye(num_modes) # each column in this matrix represents a vectorized DM shape where one actuator has been poked
     
-    responses = xp.zeros((2*Ndh, Nacts))
+    responses = xp.zeros((2*Nmask, Nacts))
     count = 0
     print('Calculating Jacobian: ')
     for i in range(num_modes):
@@ -87,12 +87,12 @@ def build_jacobian_scc(sysi, epsilon,
 
                 sysi.add_dm(amp*mode)
                 wavefront = scc.estimate_coherent(sysi, **scc_kwargs)
-                wavefront *= dark_mask
+                wavefront *= control_mask
                 response += amp * wavefront.flatten() / (2*np.var(amps))
                 sysi.add_dm(-amp*mode)
             
-            responses[::2,count] = response[dark_mask.ravel()].real
-            responses[1::2,count] = response[dark_mask.ravel()].imag
+            responses[::2,count] = response[control_mask.ravel()].real
+            responses[1::2,count] = response[control_mask.ravel()].imag
             
             print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, Nacts, time.time()-start), end='')
             print("\r", end="")
@@ -108,9 +108,7 @@ def build_jacobian_scc(sysi, epsilon,
 def run_efc_perfect(sysi, 
                     jac, 
                     control_matrix,
-#                     reg_fun,
-#                     reg_conds,
-                    dark_mask, 
+                    control_mask, 
                     Imax_unocc=1,
                     efc_loop_gain=0.5, 
                     iterations=5, 
@@ -120,9 +118,9 @@ def run_efc_perfect(sysi,
                     plot_radial_contrast=True):
     # This function is only for running EFC simulations
     print('Beginning closed-loop EFC simulation.')    
-    commands = []
-    efields = []
-    
+    commands = np.zeros((iterations, sysi.Nact, sysi.Nact), dtype=np.float64)
+    efields = xp.zeros((iterations, sysi.npsf, sysi.npsf), dtype=xp.complex128)
+    images = xp.zeros((iterations, sysi.npsf, sysi.npsf), dtype=xp.float64)
     start = time.time()
     
     U, s, V = xp.linalg.svd(jac, full_matrices=False)
@@ -130,7 +128,7 @@ def run_efc_perfect(sysi,
     print('Max singular value squared:\t', s.max()**2)
     print('alpha^2:\t\t\t', alpha2) 
     
-    Ndh = int(dark_mask.sum())
+    Nmask = int(control_mask.sum())
     
     dm_mask = sysi.dm_mask.flatten()
     if hasattr(sysi, 'bad_acts'):
@@ -141,44 +139,51 @@ def run_efc_perfect(sysi,
     print()
     for i in range(iterations+1):
         print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
-        sysi.set_dm(dm_ref + dm_command)
-
+        
+#         commands.append(sysi.get_dm())
+#         efields.append(copy.copy(electric_field))
+#         images.append(copy.copy(image))
+        
         electric_field = sysi.calc_psf()
-
-        commands.append(sysi.get_dm())
-        efields.append(copy.copy(electric_field))
-
-        efield_ri = xp.zeros(2*Ndh)
-        efield_ri[::2] = electric_field[dark_mask].real
-        efield_ri[1::2] = electric_field[dark_mask].imag
+        image = xp.abs(electric_field)**2
+        
+        commands[i] = sysi.get_dm()
+        efields[i] = copy.copy(electric_field)
+        images[i] = copy.copy(image)
+        
+        efield_ri = xp.zeros(2*Nmask)
+        efield_ri[::2] = electric_field[control_mask].real
+        efield_ri[1::2] = electric_field[control_mask].imag
         del_dm = -control_matrix.dot(efield_ri)
 
-        del_dm = xp.array(utils.map_acts_to_dm(utils.ensure_np_array(del_dm), dm_mask))
+        del_dm = sysi.map_acts_to_dm(del_dm)
         dm_command += efc_loop_gain * utils.ensure_np_array(del_dm)
-
+        
+        sysi.set_dm(dm_ref + dm_command)
+        
         if plot_current or plot_all:
 
-            imshows.imshow2(commands[i], xp.abs(efields[i])**2, 
+            imshows.imshow2(commands[i], image, 
                             'DM Command', 'Image: Iteration {:d}'.format(i),
-                            lognorm2=True)
+                            cmap1='viridis', lognorm2=True, vmin2=1e-11)
 
             if plot_sms:
-                sms_fig = utils.sms(U, s, alpha2, efield_ri, Ndh, Imax_unocc, i)
+                sms_fig = utils.sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
 
             if plot_radial_contrast:
-                utils.plot_radial_contrast(xp.abs(efields[i])**2, dark_mask, sysi.psf_pixelscale_lamD, nbins=100)
+                utils.plot_radial_contrast(xp.abs(efields[i])**2, control_mask, sysi.psf_pixelscale_lamD, nbins=100)
             
             if not plot_all: clear_output(wait=True)
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
-    return commands, efields
+    return images, efields, commands
 
 def run_efc_pwp(sysi, 
                 pwp_fun,
                 pwp_kwargs,
                 jac,
                 control_matrix,
-                dark_mask, 
+                control_mask, 
                 Imax_unocc=1,
                 efc_loop_gain=0.5, 
                 iterations=5, 
@@ -199,7 +204,7 @@ def run_efc_pwp(sysi,
     print('Max singular value squared:\t', s.max()**2)
     print('alpha^2:\t\t\t', alpha2) 
     
-    Nmask = int(dark_mask.sum())
+    Nmask = int(control_mask.sum())
     
     dm_mask = sysi.dm_mask.flatten()
     if hasattr(sysi, 'bad_acts'):
@@ -211,20 +216,20 @@ def run_efc_pwp(sysi,
     for i in range(iterations+1):
         print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
         sysi.set_dm(dm_ref + dm_command)
-        E_est = pwp_fun(sysi, dark_mask, **pwp_kwargs)
+        E_est = pwp_fun(sysi, control_mask, **pwp_kwargs)
         I_est = xp.abs(E_est)**2
         I_exact = sysi.snap()
 
-        rms_est = np.sqrt(np.mean(I_est[dark_mask]**2))
-        rms_im = np.sqrt(np.mean(I_exact[dark_mask]**2))
+        rms_est = np.sqrt(np.mean(I_est[control_mask]**2))
+        rms_im = np.sqrt(np.mean(I_exact[control_mask]**2))
         mf = rms_est/rms_im # measure how well the estimate and image match
 
         commands.append(sysi.get_dm())
         efields.append(copy.copy(E_est))
         images.append(copy.copy(I_exact))
 
-        efield_ri[::2] = E_est[dark_mask].real
-        efield_ri[1::2] = E_est[dark_mask].imag
+        efield_ri[::2] = E_est[control_mask].real
+        efield_ri[1::2] = E_est[control_mask].imag
         del_dm = -control_matrix.dot(efield_ri)
 
         del_dm = sysi.map_actuators_to_command(del_dm)
@@ -240,7 +245,7 @@ def run_efc_pwp(sysi,
                 sms_fig = utils.sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
 
             if plot_radial_contrast:
-                utils.plot_radial_contrast(images[-1], dark_mask, sysi.psf_pixelscale_lamD, nbins=100)
+                utils.plot_radial_contrast(images[-1], control_mask, sysi.psf_pixelscale_lamD, nbins=100)
 
         
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
@@ -251,7 +256,7 @@ def run_efc_pwp(sysi,
 def run_efc_scc(sysi, 
                 jac,
                 control_matrix,
-                dark_mask, 
+                control_mask, 
                 Imax_unocc=1,
                 efc_loop_gain=0.5, 
                 iterations=5, 
@@ -273,7 +278,7 @@ def run_efc_scc(sysi,
     print('Max singular value squared:\t', s.max()**2)
     print('alpha^2:\t\t\t', alpha2) 
     
-    Nmask = int(dark_mask.sum())
+    Nmask = int(control_mask.sum())
     
     dm_mask = sysi.dm_mask.flatten()
     if hasattr(sysi, 'bad_acts'):
@@ -286,20 +291,20 @@ def run_efc_scc(sysi,
         print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
         sysi.set_dm(dm_ref + dm_command)
         E_est = scc.estimate_coherent(sysi, **scc_kwargs)
-        E_est *= dark_mask
+        E_est *= control_mask
         I_est = xp.abs(E_est)**2
         I_exact = sysi.snap()
 
-        rms_est = np.sqrt(np.mean(I_est[dark_mask]**2))
-        rms_im = np.sqrt(np.mean(I_exact[dark_mask]**2))
+        rms_est = np.sqrt(np.mean(I_est[control_mask]**2))
+        rms_im = np.sqrt(np.mean(I_exact[control_mask]**2))
         mf = rms_est/rms_im # measure how well the estimate and image match
 
         commands.append(sysi.get_dm())
         efields.append(copy.copy(E_est))
         images.append(copy.copy(I_exact))
 
-        efield_ri[::2] = E_est[dark_mask].real
-        efield_ri[1::2] = E_est[dark_mask].imag
+        efield_ri[::2] = E_est[control_mask].real
+        efield_ri[1::2] = E_est[control_mask].imag
         del_dm = -control_matrix.dot(efield_ri)
 
         del_dm = sysi.map_actuators_to_command(del_dm)
@@ -315,7 +320,7 @@ def run_efc_scc(sysi,
                 sms_fig = utils.sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
 
             if plot_radial_contrast:
-                utils.plot_radial_contrast(images[-1], dark_mask, sysi.psf_pixelscale_lamD, nbins=100)
+                utils.plot_radial_contrast(images[-1], control_mask, sysi.psf_pixelscale_lamD, nbins=100)
 
         
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
