@@ -8,6 +8,16 @@ import time
 import copy
 from IPython.display import display, clear_output
 
+
+class EFC():
+    
+    def __init__(wavelengths,
+                 jacobian,
+                 control_mask,
+                 reg=None,
+                 rconds=None,):
+        
+
 def build_jacobian(sysi, epsilon, 
                    control_mask,
                    plot=False,
@@ -134,17 +144,24 @@ def run_efc_perfect(sysi,
     if hasattr(sysi, 'bad_acts'):
         dm_mask[sysi.bad_acts] = False
     
+    dm_ref = sysi.get_dm()
+    dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
     print()
-    for i in range(iterations):
-        print(f'\tRunning iteration {i+1}/{iterations}.')
+    for i in range(iterations+1):
+        print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
         
-        if i==0:
-            dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
-            efield_ri = xp.zeros(2*Nmask)
-            dm_ref = sysi.get_dm()
-            electric_field = sysi.calc_psf()
-            image = xp.abs(electric_field)**2
+#         commands.append(sysi.get_dm())
+#         efields.append(copy.copy(electric_field))
+#         images.append(copy.copy(image))
         
+        electric_field = sysi.calc_psf()
+        image = xp.abs(electric_field)**2
+        
+        commands[i] = sysi.get_dm()
+        efields[i] = copy.copy(electric_field)
+        images[i] = copy.copy(image)
+        
+        efield_ri = xp.zeros(2*Nmask)
         efield_ri[::2] = electric_field[control_mask].real
         efield_ri[1::2] = electric_field[control_mask].imag
         del_dm = -control_matrix.dot(efield_ri)
@@ -154,18 +171,10 @@ def run_efc_perfect(sysi,
         
         sysi.set_dm(dm_ref + dm_command)
         
-        electric_field = sysi.calc_psf()
-        image = xp.abs(electric_field)**2
-        
-        commands[i] = sysi.get_dm()
-        efields[i] = copy.copy(electric_field)
-        images[i] = copy.copy(image)
-        
-        
         if plot_current or plot_all:
 
             imshows.imshow2(commands[i], image, 
-                             f'DM Command: Iteration {i+1}', 'Image',
+                            'DM Command', 'Image: Iteration {:d}'.format(i),
                             cmap1='viridis', lognorm2=True, vmin2=1e-11)
 
             if plot_sms:
@@ -175,7 +184,6 @@ def run_efc_perfect(sysi,
                 utils.plot_radial_contrast(xp.abs(efields[i])**2, control_mask, sysi.psf_pixelscale_lamD, nbins=100)
             
             if not plot_all: clear_output(wait=True)
-                
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
     return images, efields, commands
@@ -195,9 +203,9 @@ def run_efc_pwp(sysi,
                 plot_radial_contrast=True):
     print('Beginning closed-loop EFC simulation.')
     
-    commands = np.zeros((iterations, sysi.Nact, sysi.Nact), dtype=np.float64)
-    efields = xp.zeros((iterations, sysi.npsf, sysi.npsf), dtype=xp.complex128)
-    images = xp.zeros((iterations, sysi.npsf, sysi.npsf), dtype=xp.float64)
+    commands = []
+    efields = []
+    images = []
     
     start=time.time()
     
@@ -212,43 +220,35 @@ def run_efc_pwp(sysi,
     if hasattr(sysi, 'bad_acts'):
         dm_mask[sysi.bad_acts] = False
     
-    for i in range(iterations):
-        print(f'\tRunning iteration {i+1}/{iterations}.')
-        if i==0:
-            efield_ri = xp.zeros(2*Nmask)
-            dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
-            dm_ref = sysi.get_dm()
-            E_est = pwp_fun(sysi, control_mask, **pwp_kwargs)
-            I_est = xp.abs(E_est)**2
-            I_exact = sysi.snap()
-            
+    dm_ref = sysi.get_dm()
+    dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
+    efield_ri = xp.zeros(2*Nmask)
+    for i in range(iterations+1):
+        print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
+        sysi.set_dm(dm_ref + dm_command)
+        E_est = pwp_fun(sysi, control_mask, **pwp_kwargs)
+        I_est = xp.abs(E_est)**2
+        I_exact = sysi.snap()
+
+        rms_est = np.sqrt(np.mean(I_est[control_mask]**2))
+        rms_im = np.sqrt(np.mean(I_exact[control_mask]**2))
+        mf = rms_est/rms_im # measure how well the estimate and image match
+
+        commands.append(sysi.get_dm())
+        efields.append(copy.copy(E_est))
+        images.append(copy.copy(I_exact))
+
         efield_ri[::2] = E_est[control_mask].real
         efield_ri[1::2] = E_est[control_mask].imag
         del_dm = -control_matrix.dot(efield_ri)
 
-        del_dm = sysi.map_acts_to_dm(del_dm)
-        dm_command += efc_loop_gain * utils.ensure_np_array(del_dm)
-        
-        sysi.set_dm(dm_ref + dm_command)
-        
-        E_est = pwp_fun(sysi, control_mask, **pwp_kwargs)
-        I_est = xp.abs(E_est)**2
-        I_exact = sysi.snap()
-        
-        commands[i] = sysi.get_dm()
-        efields[i] = copy.copy(E_est)
-        images[i] = copy.copy(I_exact)
-        
-        rms_est = xp.sqrt(xp.mean(I_est[control_mask]**2))
-        rms_im = xp.sqrt(xp.mean(I_exact[control_mask]**2))
-        mf = rms_est/rms_im # measure how well the estimate and image match
-
+        del_dm = sysi.map_actuators_to_command(del_dm)
+        dm_command += efc_loop_gain * del_dm
 
         if plot_current or plot_all:
             if not plot_all: clear_output(wait=True)
 
             imshows.imshow3(commands[i], I_est, I_exact, 
-                            f'DM Command: Iteration {i+1}', 'Image Estimate', f'Image: MF={mf:.3f}',
                             lognorm2=True, lognorm3=True)
 
             if plot_sms:
