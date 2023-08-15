@@ -169,7 +169,7 @@ def run_efc_perfect(sysi,
                             cmap1='viridis', lognorm2=True, vmin2=1e-11)
 
             if plot_sms:
-                sms_fig = utils.sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
+                sms_fig = sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
 
             if plot_radial_contrast:
                 utils.plot_radial_contrast(xp.abs(efields[i])**2, control_mask, sysi.psf_pixelscale_lamD, nbins=100)
@@ -252,7 +252,7 @@ def run_efc_pwp(sysi,
                             lognorm2=True, lognorm3=True)
 
             if plot_sms:
-                sms_fig = utils.sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
+                sms_fig = sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
 
             if plot_radial_contrast:
                 utils.plot_radial_contrast(images[-1], control_mask, sysi.psf_pixelscale_lamD, nbins=100)
@@ -327,7 +327,7 @@ def run_efc_scc(sysi,
                             lognorm2=True, lognorm3=True)
 
             if plot_sms:
-                sms_fig = utils.sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
+                sms_fig = sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
 
             if plot_radial_contrast:
                 utils.plot_radial_contrast(images[-1], control_mask, sysi.psf_pixelscale_lamD, nbins=100)
@@ -336,3 +336,38 @@ def run_efc_scc(sysi,
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
     return commands, efields, images
+
+
+def sms(U, s, alpha2, electric_field, N_DH, 
+        Imax_unocc, 
+        itr): 
+    # jac: system jacobian
+    # electric_field: the electric field acquired by estimation or from the model
+    
+    E_ri = U.conj().T.dot(electric_field)
+    SMS = xp.abs(E_ri)**2/(N_DH/2 * Imax_unocc)
+    
+    Nbox = 31
+    box = xp.ones(Nbox)/Nbox
+    SMS_smooth = xp.convolve(SMS, box, mode='same')
+    
+    x = (s**2/alpha2)
+    y = SMS_smooth
+    
+    xmax = float(np.max(x))
+    xmin = 1e-10 
+    ymax = 1
+    ymin = 1e-14
+    
+    fig = plt.figure(dpi=125, figsize=(6,4))
+    plt.loglog(ensure_np_array(x), ensure_np_array(y))
+    plt.title('Singular Mode Spectrum: Iteration {:d}'.format(itr))
+    plt.xlim(xmin, xmax)
+    plt.ylim(ymin, ymax)
+    plt.xlabel(r'$(s_{i}/\alpha)^2$: Square of Normalized Singular Values')
+    plt.ylabel('SMS')
+    plt.grid()
+    plt.close()
+    display(fig)
+    
+    return fig

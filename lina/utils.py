@@ -41,12 +41,13 @@ def map_acts_to_dm(actuators, dm_mask, Nact=34):
     return command
 
 # Create control matrix
-def WeightedLeastSquares(A, weight_map, nprobes=2, rcond=1e-15):
+def WeightedLeastSquares(A, weight_map, nprobes=2, rcond=1e-1):
     control_mask = weight_map > 0
     w = weight_map[control_mask]
     for i in range(nprobes-1):
         w = xp.concatenate((w, weight_map[control_mask]))
     W = xp.diag(w)
+    print(W.shape, A.shape)
     cov = A.T.dot(W.dot(A))
     return xp.linalg.inv(cov + rcond * xp.diag(cov).max() * xp.eye(A.shape[1])).dot( A.T.dot(W) )
 
@@ -106,40 +107,6 @@ def create_box_focal_plane_mask(sysi, x0, y0, width, height):
     mask = ( abs(x - x0) < width/2 ) * ( abs(y - y0) < height/2 )
     return mask > 0
 
-def sms(U, s, alpha2, electric_field, N_DH, 
-        Imax_unocc, 
-        itr): 
-    # jac: system jacobian
-    # electric_field: the electric field acquired by estimation or from the model
-    
-    E_ri = U.conj().T.dot(electric_field)
-    SMS = xp.abs(E_ri)**2/(N_DH/2 * Imax_unocc)
-    
-    Nbox = 31
-    box = xp.ones(Nbox)/Nbox
-    SMS_smooth = xp.convolve(SMS, box, mode='same')
-    
-    x = (s**2/alpha2)
-    y = SMS_smooth
-    
-    xmax = float(np.max(x))
-    xmin = 1e-10 
-    ymax = 1
-    ymin = 1e-14
-    
-    fig = plt.figure(dpi=125, figsize=(6,4))
-    plt.loglog(ensure_np_array(x), ensure_np_array(y))
-    plt.title('Singular Mode Spectrum: Iteration {:d}'.format(itr))
-    plt.xlim(xmin, xmax)
-    plt.ylim(ymin, ymax)
-    plt.xlabel(r'$(s_{i}/\alpha)^2$: Square of Normalized Singular Values')
-    plt.ylabel('SMS')
-    plt.grid()
-    plt.close()
-    display(fig)
-    
-    return fig
-
 
 def masked_rms(image,mask=None):
     return np.sqrt(np.mean(image[mask]**2))
@@ -197,7 +164,7 @@ def create_hadamard_modes(dm_mask):
     
     return had_modes
 
-def select_fourier_modes(sysi, control_mask, fourier_sampling=0.75, use='both'):
+def create_fourier_modes(sysi, control_mask, fourier_sampling=0.75, use='both'):
     xfp = (np.linspace(-sysi.npsf/2, sysi.npsf/2-1, sysi.npsf) + 1/2) * sysi.psf_pixelscale_lamD
     fpx, fpy = np.meshgrid(xfp,xfp)
     
@@ -244,7 +211,7 @@ def create_fourier_probes(sysi, control_mask,
     xfp = (xp.linspace(-sysi.npsf/2, sysi.npsf/2-1, sysi.npsf) + 1/2) * sysi.psf_pixelscale_lamD
     fpx, fpy = xp.meshgrid(xfp,xfp)
     
-    fourier_modes, fs = select_fourier_modes(sysi, control_mask*(fpx>0), fourier_sampling=fourier_sampling, use='both')
+    fourier_modes, fs = create_fourier_modes(sysi, control_mask*(fpx>0), fourier_sampling=fourier_sampling, use='both')
     nfs = fourier_modes.shape[0]//2
     
     probes = np.zeros((nprobes, sysi.Nact, sysi.Nact))
@@ -311,6 +278,21 @@ def create_probe_poke_modes(Nact,
         display(fig)
         
     return probe_modes
+
+def create_all_poke_modes(dm_mask):
+    Nact = dm_mask.shape[0]
+    Nacts = int(np.sum(dm_mask))
+    poke_modes = np.zeros((Nacts, Nact, Nact))
+    count=0
+    for i in range(Nact):
+        for j in range(Nact):
+            if dm_mask[i,j]:
+                poke_modes[count, i,j] = 1
+                count+=1
+
+    poke_modes = poke_modes[:,:].reshape(Nacts, Nact**2)
+    
+    return poke_modes
 
 def create_sinc_probe(Nacts, amp, probe_radius, probe_phase=0, offset=(0,0), bad_axis='x'):
     print('Generating probe with amplitude={:.3e}, radius={:.1f}, phase={:.3f}, offset=({:.1f},{:.1f}), with discontinuity along '.format(amp, probe_radius, probe_phase, offset[0], offset[1]) + bad_axis + ' axis.')
