@@ -10,7 +10,7 @@ from IPython.display import display, clear_output
 
 
 # def take_measurement(system_interface, probe_cube, probe_amplitude, return_all=False, pca_modes=None):
-def take_measurement(sysi, probe_cube, probe_amplitude, return_all=False, pca_modes=None):
+def take_measurement(sysi, probe_cube, probe_amplitude, return_all=False, pca_modes=None, plot=False):
 
 #     if probe_cube.shape[0]==2:
 #         differential_operator = xp.array([[-1,1,0,0],
@@ -40,6 +40,11 @@ def take_measurement(sysi, probe_cube, probe_amplitude, return_all=False, pca_mo
     
     differential_images = differential_operator.dot(images)
     
+    if plot:
+        for i, diff_im in enumerate(differential_images):
+            imshows.imshow2(probe_cube[i], diff_im.reshape(sysi.npsf, sysi.npsf), 
+                            f'Probe Command {i+1}', 'Difference Image', pxscl2=sysi.psf_pixelscale_lamD)
+            
     if pca_modes is not None:
         differential_images = differential_images - (pca_modes.T.dot( pca_modes.dot(differential_images.T) )).T
         
@@ -137,10 +142,10 @@ def run(sysi,
         print(f"\tClosed-loop iteration {i+1} / {num_iterations}")
         
         delta_coefficients = single_iteration(sysi, probe_modes, probe_amplitude, control_matrix, control_mask)
-        modal_coeff = (1.0-leakage)*command + loop_gain*delta_coefficients
+        modal_coeff = (1.0-leakage)*modal_coeff + loop_gain*delta_coefficients
         
         # Reconstruct the full phase from the Fourier modes
-        dm_command = calibration_modes.T.dot(ensure_np_array(modal_coeff)).reshape(sysi.Nact,sysi.Nact)
+        dm_command = -calibration_modes.T.dot(ensure_np_array(modal_coeff)).reshape(sysi.Nact,sysi.Nact)
         sysi.set_dm(dm_ref + dm_command)
         
         # Take an image to estimate the metrics

@@ -164,7 +164,7 @@ def create_hadamard_modes(dm_mask):
     
     return had_modes
 
-def create_fourier_modes(sysi, control_mask, fourier_sampling=0.75, use='both'):
+def create_fourier_modes(sysi, control_mask, fourier_sampling=0.75, use='both', return_fs=False):
     xfp = (np.linspace(-sysi.npsf/2, sysi.npsf/2-1, sysi.npsf) + 1/2) * sysi.psf_pixelscale_lamD
     fpx, fpy = np.meshgrid(xfp,xfp)
     
@@ -197,8 +197,11 @@ def create_fourier_modes(sysi, control_mask, fourier_sampling=0.75, use='both'):
         modes = cos_modes
     elif use=='sin' or use=='s':
         modes = sin_modes
-        
-    return np.array(modes), sampled_fs
+    
+    if return_fs:
+        return np.array(modes), sampled_fs
+    else:
+        return np.array(modes)
 
 def create_fourier_probes(sysi, control_mask,
                           Nact=34, 
@@ -211,7 +214,7 @@ def create_fourier_probes(sysi, control_mask,
     xfp = (xp.linspace(-sysi.npsf/2, sysi.npsf/2-1, sysi.npsf) + 1/2) * sysi.psf_pixelscale_lamD
     fpx, fpy = xp.meshgrid(xfp,xfp)
     
-    fourier_modes, fs = create_fourier_modes(sysi, control_mask*(fpx>0), fourier_sampling=fourier_sampling, use='both')
+    fourier_modes = create_fourier_modes(sysi, control_mask, fourier_sampling=fourier_sampling, use='both')
     nfs = fourier_modes.shape[0]//2
     
     probes = np.zeros((nprobes, sysi.Nact, sysi.Nact))
