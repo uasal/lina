@@ -316,9 +316,11 @@ def run_efc_scc(sysi,
         efield_ri[::2] = E_est[control_mask].real
         efield_ri[1::2] = E_est[control_mask].imag
         del_dm = -control_matrix.dot(efield_ri)
-
         del_dm = sysi.map_actuators_to_command(del_dm)
         dm_command += efc_loop_gain * del_dm
+        
+        modal_coeff = -control_matrix.dot(efield_ri)
+        dm_command = calib_modes.dot(modal_coeff) # Nact**2 X Nmodes dot Nmodes X 1 = Nact**2 
 
         if plot_current or plot_all:
             if not plot_all: clear_output(wait=True)
