@@ -43,7 +43,8 @@ def take_measurement(sysi, probe_cube, probe_amplitude, return_all=False, pca_mo
     if plot:
         for i, diff_im in enumerate(differential_images):
             imshows.imshow2(probe_cube[i], diff_im.reshape(sysi.npsf, sysi.npsf), 
-                            f'Probe Command {i+1}', 'Difference Image', pxscl2=sysi.psf_pixelscale_lamD)
+                            f'Probe Command {i+1}', 'Difference Image', pxscl2=sysi.psf_pixelscale_lamD,
+                            cmap1='viridis')
             
     if pca_modes is not None:
         differential_images = differential_images - (pca_modes.T.dot( pca_modes.dot(differential_images.T) )).T
@@ -159,9 +160,12 @@ def run(sysi,
         
         if plot_current: 
             if not plot_all: clear_output(wait=True)
-            imshows.imshow2(dm_commands[i], image,
+            imshows.imshow3(dm_commands[i], image, image*control_mask,
                             'DM Command', f'Image: Iteration {i}',
-                            pxscl2=sysi.psf_pixelscale_lamD, lognorm2=True, vmin2=1e-11)
+                            pxscl2=sysi.psf_pixelscale_lamD, pxscl3=sysi.psf_pixelscale_lamD, 
+                            lognorm2=True, lognorm3=True
+#                             vmin2=1e-11,
+                           )
             if plot_radial_contrast:
                 utils.plot_radial_contrast(image, control_mask, sysi.psf_pixelscale_lamD, nbins=100)
                 
