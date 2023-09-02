@@ -97,9 +97,12 @@ def calibrate(sysi,
         response_cube = xp.array(response_cube)
     
     if plot_sum:
-        response_sum = xp.sum(abs(response_cube), axis=(0,1)).reshape(sysi.npsf,sysi.npsf)
-        imshows.imshow1(response_sum)
-    
+        dm_rss = xp.sqrt(xp.sum(abs(response_matrix.dot(calibration_modes))**2, axis=0)).reshape(sysi.Nact,sysi.Nact)
+        imshows.imshow1(dm_rss)
+        if return_all:
+            fp_rss = xp.sqrt(xp.sum(abs(response_cube)**2, axis=(0,1))).reshape(sysi.npsf,sysi.npsf)
+            imshows.imshow1(fp_rss)
+            
     if return_all:
         return response_matrix, response_cube
     else:
