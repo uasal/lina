@@ -175,7 +175,7 @@ def run(sysi,
     if old_images is not None:
         metric_images = xp.concatenate([old_images, metric_images], axis=0)
     if old_dm_commands is not None:
-        dm_commands = xp.concatenate([old_dm_commands, dm_commands], axis=0)
+        dm_commands = xp.concatenate([old_dm_commands, xp.array(dm_commands)], axis=0)
         
     print('iEFC loop completed in {:.3f}s.'.format(time.time()-start))
     return metric_images, dm_commands
