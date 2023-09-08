@@ -60,7 +60,7 @@ def calibrate(sysi,
               calibration_amplitude, calibration_modes, 
               start_mode=0,
               return_all=False, 
-             plot_sum=True):
+             plot_sum=False):
     print('Calibrating iEFC...')
     Nmodes = calibration_modes.shape[0]
     
@@ -97,11 +97,11 @@ def calibrate(sysi,
         response_cube = xp.array(response_cube)
     
     if plot_sum:
-        dm_rss = xp.sqrt(xp.sum(abs(response_matrix.dot(calibration_modes))**2, axis=0)).reshape(sysi.Nact,sysi.Nact)
-        imshows.imshow1(dm_rss)
+        dm_rss = xp.sqrt(xp.sum(abs(response_matrix.dot(xp.array(calibration_modes)))**2, axis=0)).reshape(sysi.Nact,sysi.Nact)
+        imshows.imshow1(dm_rss, 'DM RSS Response')
         if return_all:
             fp_rss = xp.sqrt(xp.sum(abs(response_cube)**2, axis=(0,1))).reshape(sysi.npsf,sysi.npsf)
-            imshows.imshow1(fp_rss)
+            imshows.imshow1(fp_rss, 'Focal Plane RSS Response', lognorm=True)
             
     if return_all:
         return response_matrix, response_cube
@@ -175,7 +175,7 @@ def run(sysi,
     if old_images is not None:
         metric_images = xp.concatenate([old_images, metric_images], axis=0)
     if old_dm_commands is not None:
-        dm_commands = xp.concatenate([old_dm_commands, dm_commands], axis=0)
+        dm_commands = xp.concatenate([old_dm_commands, xp.array(dm_commands)], axis=0)
         
     print('iEFC loop completed in {:.3f}s.'.format(time.time()-start))
     return metric_images, dm_commands
