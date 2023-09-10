@@ -318,7 +318,7 @@ def create_sinc_probe(Nacts, amp, probe_radius, probe_phase=0, offset=(0,0), bad
         probe_commands = amp * np.sinc(f*Xacts)*np.sinc(f*Yacts)
     return probe_commands
 
-def create_sinc_probes(Npairs, Nact, dm_mask, probe_amplitude, probe_radius=10, probe_offset=(0,0)):
+def create_sinc_probes(Npairs, Nact, dm_mask, probe_amplitude, probe_radius=10, probe_offset=(0,0), plot=False):
     
     probe_phases = np.linspace(0, np.pi*(Npairs-1)/Npairs, Npairs)
     
@@ -332,8 +332,13 @@ def create_sinc_probes(Npairs, Nact, dm_mask, probe_amplitude, probe_radius=10, 
         probe = create_sinc_probe(Nact, probe_amplitude, probe_radius, probe_phases[i], offset=probe_offset, bad_axis=axis)
             
         probes.append(probe*dm_mask)
+    probes = np.array(probes)
+    if plot:
+        for i,probe in enumerate(probes):
+            probe_response = np.abs(np.fft.fftshift(np.fft.fft2(np.fft.ifftshift( pad_or_crop(probe, int(4*Nact))  ))))
+            imshows.imshow2(probe, probe_response, pxscl2=1/4)
     
-    return np.array(probes)
+    return probes
     
 def get_radial_dist(shape, scaleyx=(1.0, 1.0), cenyx=None):
     '''

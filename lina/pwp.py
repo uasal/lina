@@ -44,21 +44,34 @@ def run_pwp_bp(sysi,
     I_diff = xp.zeros((probes.shape[0], Ndh))
     for i in range(len(probes)):
         if (use=='jacobian' or use.lower()=='j') and jacobian is not None:
-            E_probe = jacobian.dot(xp.array(probes[i][sysi.dm_mask])) 
+            E_probe = jacobian.dot(xp.array(probes[i][sysi.dm_mask]))
             E_probe = E_probe[::2] + 1j*E_probe[1::2]
         elif (use=='model' or use=='m') and model is not None:
-            if i==0: E_full = model.calc_psf().wavefront.get()[dark_mask]
+            if i==0: 
+                E_full = model.calc_psf()[dark_mask]
                 
             model.add_dm(probes[i])
-            E_full_probe = model.calc_psf().wavefront.get()[dark_mask]
+            E_full_probe = model.calc_psf()[dark_mask]
             model.add_dm(-probes[i])
             
             E_probe = E_full_probe - E_full
             
+#             model.add_dm(probes[i])
+#             E_full_probe_pos = model.calc_psf()[dark_mask]
+#             model.add_dm(-probes[i])
+            
+#             model.add_dm(-probes[i])
+#             E_full_probe_neg = model.calc_psf()[dark_mask]
+#             model.add_dm(probes[i])
+            
+#             probe_amp = np.max(probes[i])
+#             E_probe = (E_full_probe_pos-E_full_probe_neg) - E_full
+            
         if plot:
             E_probe_2d = xp.zeros((sysi.npsf,sysi.npsf), dtype=np.complex128)
             xp.place(E_probe_2d, mask=dark_mask, vals=E_probe)
-            imshows.imshow2(xp.abs(E_probe_2d), xp.angle(E_probe_2d))
+            imshows.imshow2(xp.abs(E_probe_2d), xp.angle(E_probe_2d),
+                            f'Probe {i+1}: '+'$|E_{probe}|$', f'Probe {i+1}: '+r'$\angle E_{probe}$')
             
         E_probes[i, ::2] = E_probe.real
         E_probes[i, 1::2] = E_probe.imag
