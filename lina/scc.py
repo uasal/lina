@@ -2,6 +2,7 @@ from .math_module import xp, _scipy
 from . import utils
 from . import imshows
 import time
+import copy
 
 from IPython.display import display, clear_output
 
@@ -72,8 +73,8 @@ def build_jacobian(sysi,
     amps = xp.linspace(-epsilon, epsilon, 2) # for generating a negative and positive actuator poke
     
     dm_mask = sysi.dm_mask.flatten()
-#     if hasattr(sysi, 'bad_acts'):
-#         dm_mask[sysi.bad_acts] = False
+    if hasattr(sysi, 'bad_acts'):
+        dm_mask[sysi.bad_acts] = False
     
     Nacts = int(dm_mask.sum())
     Nmask = int(control_mask.sum())
@@ -109,3 +110,83 @@ def build_jacobian(sysi,
     print('Jacobian built in {:.3f} sec'.format(time.time()-start))
     
     return responses
+
+def run(sysi, 
+        control_matrix,
+        control_mask, 
+        control_modes,
+        jacobian=None,
+        gain=0.5, 
+        iterations=5, 
+        plot_all=False, 
+        plot_current=True,
+        plot_radial_contrast=True,
+        **scc_kwargs,
+        ):
+    
+    print('Beginning closed-loop EFC simulation.')
+    
+    commands = []
+    efields = []
+    images = []
+    
+    start=time.time()
+    
+    if jacobian is not None:
+        U, s, V = xp.linalg.svd(jacobian, full_matrices=False)
+        alpha2 = xp.max( xp.diag( xp.real( jacobian.conj().T @ jacobian ) ) )
+        print('Max singular value squared:\t', s.max()**2)
+        print('alpha^2:\t\t\t', alpha2) 
+    
+    Nmask = int(control_mask.sum())
+    
+    dm_mask = sysi.dm_mask.flatten()
+    # if hasattr(sysi, 'bad_acts'):
+    #     dm_mask[sysi.bad_acts] = False
+    
+    dm_ref = sysi.get_dm()
+    dm_command = xp.zeros((sysi.Nact, sysi.Nact)) 
+    efield_ri = xp.zeros(2*Nmask)
+
+    for i in range(iterations+1):
+        print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
+        sysi.set_dm(dm_ref + dm_command)
+        E_est = estimate_coherent(sysi, **scc_kwargs)
+        E_est *= control_mask
+        I_est = xp.abs(E_est)**2
+        I_exact = sysi.snap()
+
+        # rms_est = xp.sqrt(xp.mean(I_est[control_mask]**2))
+        # rms_im = xp.sqrt(xp.mean(I_exact[control_mask]**2))
+        # mf = rms_est/rms_im # measure how well the estimate and image match
+
+        commands.append(sysi.get_dm())
+        efields.append(copy.copy(E_est))
+        images.append(copy.copy(I_exact))
+
+        efield_ri[::2] = E_est[control_mask].real
+        efield_ri[1::2] = E_est[control_mask].imag
+
+        # del_dm = -control_matrix.dot(efield_ri)
+        # del_dm = sysi.map_actuators_to_command(del_dm)
+        # dm_command += gain * del_dm
+
+        del_modes = -control_matrix.dot(efield_ri)
+
+        del_dm = utils.ensure_np_array(del_modes).dot(control_modes)
+        del_dm = xp.array(del_dm).reshape(sysi.Nact, sysi.Nact)
+        dm_command += gain * utils.ensure_np_array(del_dm)
+
+        if plot_current or plot_all:
+            if not plot_all: clear_output(wait=True)
+
+            imshows.imshow3(commands[i], I_est, I_exact, 
+                            lognorm2=True, lognorm3=True)
+
+            if plot_radial_contrast:
+                utils.plot_radial_contrast(images[-1], control_mask, sysi.psf_pixelscale_lamD, nbins=100)
+
+        
+    print('EFC completed in {:.3f} sec.'.format(time.time()-start))
+    
+    return commands, efields, images
