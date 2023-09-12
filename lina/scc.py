@@ -73,8 +73,8 @@ def build_jacobian(sysi,
     amps = xp.linspace(-epsilon, epsilon, 2) # for generating a negative and positive actuator poke
     
     dm_mask = sysi.dm_mask.flatten()
-    if hasattr(sysi, 'bad_acts'):
-        dm_mask[sysi.bad_acts] = False
+    # if hasattr(sysi, 'bad_acts'):
+    #     dm_mask[sysi.bad_acts] = False
     
     Nacts = int(dm_mask.sum())
     Nmask = int(control_mask.sum())
@@ -87,25 +87,27 @@ def build_jacobian(sysi,
 
     print('Calculating Jacobian: ')
     for i in range(num_modes):
-        if dm_mask[i]:
-            response = 0
-            for amp in amps:
-                mode = modes[i].reshape(sysi.Nact,sysi.Nact)
+        response = 0
+        for amp in amps:
+            mode = modes[i].reshape(sysi.Nact,sysi.Nact)
 
-                sysi.add_dm(amp*mode)
-                wavefront = estimate_coherent(sysi, **scc_kwargs)
-                wavefront *= control_mask
-                response += amp * wavefront.flatten() / (2*xp.var(amps))
-                sysi.add_dm(-amp*mode)
-            
-            responses[::2,count] = response[control_mask.ravel()].real
-            responses[1::2,count] = response[control_mask.ravel()].imag
-            
-            print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, Nacts, time.time()-start), end='')
-            print("\r", end="")
-            count += 1
-        else:
-            pass
+            sysi.add_dm(utils.ensure_np_array(amp.get() * mode))
+            wavefront = estimate_coherent(sysi, dark_mask=None, **scc_kwargs)
+            response += amp * wavefront.flatten() / (2*xp.var(amps))
+            sysi.add_dm(utils.ensure_np_array(-amp.get() * mode))
+        
+        responses[::2,count] = response[control_mask.ravel()].real
+        responses[1::2,count] = response[control_mask.ravel()].imag
+
+        if plot:
+            imshows.imshow1(xp.abs(response.reshape(256, 256)) ** 2, lognorm=True)
+            time.sleep(2)
+            clear_output(wait=True)
+        
+        print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, num_modes, 
+                                                                                            time.time()-start), end='')
+        print("\r", end="")
+        count += 1
     print()
     print('Jacobian built in {:.3f} sec'.format(time.time()-start))
     
@@ -133,7 +135,7 @@ def run(sysi,
     start=time.time()
     
     if jacobian is not None:
-        U, s, V = xp.linalg.svd(jacobian, full_matrices=False)
+        _, s, _ = xp.linalg.svd(jacobian, full_matrices=False)
         alpha2 = xp.max( xp.diag( xp.real( jacobian.conj().T @ jacobian ) ) )
         print('Max singular value squared:\t', s.max()**2)
         print('alpha^2:\t\t\t', alpha2) 
@@ -145,14 +147,13 @@ def run(sysi,
     #     dm_mask[sysi.bad_acts] = False
     
     dm_ref = sysi.get_dm()
-    dm_command = xp.zeros((sysi.Nact, sysi.Nact)) 
+    dm_command = utils.ensure_np_array(xp.zeros((sysi.Nact, sysi.Nact))) 
     efield_ri = xp.zeros(2*Nmask)
 
     for i in range(iterations+1):
         print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
         sysi.set_dm(dm_ref + dm_command)
-        E_est = estimate_coherent(sysi, **scc_kwargs)
-        E_est *= control_mask
+        E_est = estimate_coherent(sysi, dark_mask=None, **scc_kwargs)
         I_est = xp.abs(E_est)**2
         I_exact = sysi.snap()
 
