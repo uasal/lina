@@ -340,6 +340,8 @@ def run_efc_scc(sysi,
     return commands, efields, images
 
 
+import matplotlib.pyplot as plt
+
 def sms(U, s, alpha2, electric_field, N_DH, 
         Imax_unocc, 
         itr): 
@@ -362,7 +364,7 @@ def sms(U, s, alpha2, electric_field, N_DH,
     ymin = 1e-14
     
     fig = plt.figure(dpi=125, figsize=(6,4))
-    plt.loglog(ensure_np_array(x), ensure_np_array(y))
+    plt.loglog(utils.ensure_np_array(x), utils.ensure_np_array(y))
     plt.title('Singular Mode Spectrum: Iteration {:d}'.format(itr))
     plt.xlim(xmin, xmax)
     plt.ylim(ymin, ymax)

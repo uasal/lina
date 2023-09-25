@@ -93,7 +93,7 @@ def run_pwp_bp(sysi,
     xp.place(E_est_2d, mask=dark_mask, vals=E_est)
     
     if plot or plot_est:
-        imshows.imshow2(xp.abs(E_est_2d), xp.angle(E_est_2d), lognorm1=True, pxscl=sysi.psf_pixelscale_lamD)
+        imshows.imshow2(xp.abs(E_est_2d)**2, xp.angle(E_est_2d), lognorm1=True, pxscl=sysi.psf_pixelscale_lamD)
     return E_est_2d
 
 def run_pwp_redmond(sysi, dark_mask, 
