@@ -8,100 +8,91 @@ import time
 import copy
 from IPython.display import display, clear_output
 
-def build_jacobian(sysi, epsilon, 
-                   control_mask,
+# def build_jacobian(sysi, epsilon, 
+#                    control_mask,
+#                    plot=False,
+#                   ):
+#     start = time.time()
+    
+#     amps = np.linspace(-epsilon, epsilon, 2) # for generating a negative and positive actuator poke
+    
+#     dm_mask = sysi.dm_mask.flatten()
+#     if sysi.bad_acts is not None:
+#         dm_mask[sysi.bad_acts] = False
+    
+#     Nacts = int(dm_mask.sum())
+#     Nmask = int(control_mask.sum())
+    
+#     num_modes = sysi.Nact**2
+#     modes = np.eye(num_modes) # each column in this matrix represents a vectorized DM shape where one actuator has been poked
+    
+#     responses = xp.zeros((2*Nmask, Nacts))
+#     count = 0
+#     print('Calculating Jacobian: ')
+#     for i in range(num_modes):
+#         if dm_mask[i]:
+#             response = 0
+#             for amp in amps:
+#                 mode = modes[i].reshape(sysi.Nact,sysi.Nact)
+
+#                 sysi.add_dm(amp*mode)
+#                 wavefront = sysi.calc_psf()
+#                 response += amp * wavefront.flatten() / (2*np.var(amps))
+#                 sysi.add_dm(-amp*mode)
+            
+#             responses[::2,count] = response[control_mask.ravel()].real
+#             responses[1::2,count] = response[control_mask.ravel()].imag
+            
+#             print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, Nacts, time.time()-start), end='')
+#             print("\r", end="")
+#             count += 1
+#         else:
+#             pass
+#     print()
+#     print('Jacobian built in {:.3f} sec'.format(time.time()-start))
+    
+#     return responses
+
+def build_jacobian(sysi, 
+                   calibration_modes, calibration_amp,
+                   control_mask, 
                    plot=False,
                   ):
     start = time.time()
     
-    amps = np.linspace(-epsilon, epsilon, 2) # for generating a negative and positive actuator poke
+    amps = np.linspace(-calibration_amp, calibration_amp, 2) # for generating a negative and positive actuator poke
     
-    dm_mask = sysi.dm_mask.flatten()
-    if sysi.bad_acts is not None:
-        dm_mask[sysi.bad_acts] = False
-    
-    Nacts = int(dm_mask.sum())
+    Nmodes = calibration_modes.shape[0]
+#     Nacts = int(sysi.dm_mask.sum())
     Nmask = int(control_mask.sum())
     
-    num_modes = sysi.Nact**2
-    modes = np.eye(num_modes) # each column in this matrix represents a vectorized DM shape where one actuator has been poked
-    
-    responses = xp.zeros((2*Nmask, Nacts))
-    count = 0
+    responses = xp.zeros((2*Nmask, Nmodes))
     print('Calculating Jacobian: ')
-    for i in range(num_modes):
-        if dm_mask[i]:
-            response = 0
-            for amp in amps:
-                mode = modes[i].reshape(sysi.Nact,sysi.Nact)
+    for i,mode in enumerate(calibration_modes):
+        response = 0
+        for amp in amps:
+            mode = mode.reshape(sysi.Nact,sysi.Nact)
 
-                sysi.add_dm(amp*mode)
-                wavefront = sysi.calc_psf()
-                response += amp * wavefront.flatten() / (2*np.var(amps))
-                sysi.add_dm(-amp*mode)
-            
-            responses[::2,count] = response[control_mask.ravel()].real
-            responses[1::2,count] = response[control_mask.ravel()].imag
-            
-            print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, Nacts, time.time()-start), end='')
-            print("\r", end="")
-            count += 1
-        else:
-            pass
+            sysi.add_dm(amp*mode)
+            wavefront = sysi.calc_psf()
+            response += amp * wavefront.flatten() / (2*np.var(amps))
+            sysi.add_dm(-amp*mode)
+
+        responses[::2,i] = response[control_mask.ravel()].real
+        responses[1::2,i] = response[control_mask.ravel()].imag
+
+        print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(i+1, Nmodes, time.time()-start), end='')
+        print("\r", end="")
+    
     print()
     print('Jacobian built in {:.3f} sec'.format(time.time()-start))
     
-    return responses
+    if plot:
+        total_response = responses[::2] + 1j*responses[1::2]
+        dm_response = total_response.dot(xp.array(calibration_modes))
+        dm_response = xp.sqrt(xp.mean(xp.abs(dm_response)**2, axis=0)).reshape(sysi.Nact, sysi.Nact)
+        imshows.imshow1(dm_response, lognorm=True, vmin=dm_response.max()*1e-2)
 
-
-def build_jacobian_scc(sysi, epsilon, 
-                       control_mask,
-                       plot=False,
-                       **scc_kwargs,
-                      ):
-    '''
-    This can be done on the actual testbed with individual pokes
-    '''
-    start = time.time()
-    
-    amps = np.linspace(-epsilon, epsilon, 2) # for generating a negative and positive actuator poke
-    
-    dm_mask = sysi.dm_mask.flatten()
-#     if hasattr(sysi, 'bad_acts'):
-#         dm_mask[sysi.bad_acts] = False
-    
-    Nacts = int(dm_mask.sum())
-    Nmask = int(control_mask.sum())
-    
-    num_modes = sysi.Nact**2
-    modes = np.eye(num_modes) # each column in this matrix represents a vectorized DM shape where one actuator has been poked
-    
-    responses = xp.zeros((2*Nmask, Nacts))
-    count = 0
-    print('Calculating Jacobian: ')
-    for i in range(num_modes):
-        if dm_mask[i]:
-            response = 0
-            for amp in amps:
-                mode = modes[i].reshape(sysi.Nact,sysi.Nact)
-
-                sysi.add_dm(amp*mode)
-                wavefront = scc.estimate_coherent(sysi, **scc_kwargs)
-                wavefront *= control_mask
-                response += amp * wavefront.flatten() / (2*np.var(amps))
-                sysi.add_dm(-amp*mode)
-            
-            responses[::2,count] = response[control_mask.ravel()].real
-            responses[1::2,count] = response[control_mask.ravel()].imag
-            
-            print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(count+1, Nacts, time.time()-start), end='')
-            print("\r", end="")
-            count += 1
-        else:
-            pass
-    print()
-    print('Jacobian built in {:.3f} sec'.format(time.time()-start))
-    
     return responses
 
 
