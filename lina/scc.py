@@ -62,6 +62,7 @@ def build_jacobian(sysi,
                    epsilon, 
                    control_mask,
                    control_modes,
+                   imnorm,
                    plot=False,
                    **scc_kwargs,
                    ):
@@ -92,7 +93,7 @@ def build_jacobian(sysi,
             mode = modes[i].reshape(sysi.Nact,sysi.Nact)
 
             sysi.add_dm(utils.ensure_np_array(amp.get() * mode))
-            wavefront = estimate_coherent(sysi, dark_mask=None, **scc_kwargs)
+            wavefront = estimate_coherent(sysi, dark_mask=None, **scc_kwargs) / imnorm
             response += amp * wavefront.ravel() / (2*xp.var(amps))
             sysi.add_dm(utils.ensure_np_array(-amp.get() * mode))
         
@@ -117,6 +118,7 @@ def run(sysi,
         control_matrix,
         control_mask, 
         control_modes,
+        imnorm,
         jacobian=None,
         gain=0.5, 
         iterations=5, 
@@ -153,9 +155,9 @@ def run(sysi,
     for i in range(iterations+1):
         print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
         sysi.set_dm(dm_ref + dm_command)
-        E_est = estimate_coherent(sysi, dark_mask=None, **scc_kwargs).ravel()
+        E_est = estimate_coherent(sysi, dark_mask=None, **scc_kwargs) / imnorm
         I_est = xp.abs(E_est)**2
-        I_exact = sysi.snap()
+        I_exact = sysi.snap() / imnorm
 
         # rms_est = xp.sqrt(xp.mean(I_est[control_mask]**2))
         # rms_im = xp.sqrt(xp.mean(I_exact[control_mask]**2))
@@ -165,8 +167,8 @@ def run(sysi,
         efields.append(copy.copy(E_est))
         images.append(copy.copy(I_exact))
 
-        efield_ri[::2] = E_est[control_mask.ravel()].real
-        efield_ri[1::2] = E_est[control_mask.ravel()].imag
+        efield_ri[::2] = E_est.ravel()[control_mask.ravel()].real
+        efield_ri[1::2] = E_est.ravel()[control_mask.ravel()].imag
 
         # del_dm = -control_matrix.dot(efield_ri)
         # del_dm = sysi.map_actuators_to_command(del_dm)
