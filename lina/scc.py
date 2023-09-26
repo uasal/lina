@@ -93,7 +93,7 @@ def build_jacobian(sysi,
 
             sysi.add_dm(utils.ensure_np_array(amp.get() * mode))
             wavefront = estimate_coherent(sysi, dark_mask=None, **scc_kwargs)
-            response += amp * wavefront.flatten() / (2*xp.var(amps))
+            response += amp * wavefront.ravel() / (2*xp.var(amps))
             sysi.add_dm(utils.ensure_np_array(-amp.get() * mode))
         
         responses[::2,count] = response[control_mask.ravel()].real
@@ -153,7 +153,7 @@ def run(sysi,
     for i in range(iterations+1):
         print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
         sysi.set_dm(dm_ref + dm_command)
-        E_est = estimate_coherent(sysi, dark_mask=None, **scc_kwargs)
+        E_est = estimate_coherent(sysi, dark_mask=None, **scc_kwargs).ravel()
         I_est = xp.abs(E_est)**2
         I_exact = sysi.snap()
 
