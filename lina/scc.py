@@ -165,8 +165,8 @@ def run(sysi,
         efields.append(copy.copy(E_est))
         images.append(copy.copy(I_exact))
 
-        efield_ri[::2] = E_est[control_mask].real
-        efield_ri[1::2] = E_est[control_mask].imag
+        efield_ri[::2] = E_est[control_mask.ravel()].real
+        efield_ri[1::2] = E_est[control_mask.ravel()].imag
 
         # del_dm = -control_matrix.dot(efield_ri)
         # del_dm = sysi.map_actuators_to_command(del_dm)
