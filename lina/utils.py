@@ -32,12 +32,10 @@ def pad_or_crop( arr_in, npix ):
     return arr_out
 
 
-def map_acts_to_dm(actuators, dm_mask, Nact=34):
-    inds = xp.where(xp.array(dm_mask).flatten().astype(int))[0]
-    
+def map_acts_to_dm(actuators, dm_mask):
+    Nact = dm_mask.shape[0]
     command = xp.zeros((Nact, Nact))
-    command.ravel()[inds] = actuators
-    
+    command.ravel()[dm_mask.ravel()] = actuators
     return command
 
 # Create control matrix
