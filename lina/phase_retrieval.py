@@ -55,9 +55,6 @@ def fdpr(fit_mask, images, defocus_values, tol=1e-6, reg=0, wreg=10):
     return prdict
 
 
-
-
-
 def get_array_module(arr):
     if cp is not None:
         return cp.get_array_module(arr)
