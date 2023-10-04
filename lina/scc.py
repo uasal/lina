@@ -93,7 +93,7 @@ def build_jacobian(sysi,
             mode = modes[i].reshape(sysi.Nact,sysi.Nact)
 
             sysi.add_dm(utils.ensure_np_array(amp.get() * mode))
-            wavefront = estimate_coherent(sysi, dark_mask=None, **scc_kwargs) / imnorm
+            wavefront = estimate_coherent(sysi, dark_mask=None, **scc_kwargs) / xp.sqrt(imnorm)
             response += amp * wavefront.ravel() / (2*xp.var(amps))
             sysi.add_dm(utils.ensure_np_array(-amp.get() * mode))
         
@@ -128,8 +128,6 @@ def run(sysi,
         **scc_kwargs,
         ):
     
-    print('Beginning closed-loop EFC simulation.')
-    
     commands = []
     efields = []
     images = []
@@ -153,9 +151,9 @@ def run(sysi,
     efield_ri = xp.zeros(2*Nmask)
 
     for i in range(iterations+1):
-        print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
+        print('\tRunning iteration {:d}/{:d}.'.format(i, iterations), end="\r")
         sysi.set_dm(dm_ref + dm_command)
-        E_est = estimate_coherent(sysi, dark_mask=None, **scc_kwargs) / imnorm
+        E_est = estimate_coherent(sysi, dark_mask=None, **scc_kwargs) / xp.sqrt(imnorm)
         I_est = xp.abs(E_est)**2
         I_exact = sysi.snap() / imnorm
 
