@@ -44,7 +44,7 @@ def run_pwp_bp(sysi,
     I_diff = xp.zeros((probes.shape[0], Ndh))
     for i in range(len(probes)):
         if (use=='jacobian' or use.lower()=='j') and jacobian is not None:
-            E_probe = jacobian.dot(xp.array(probes[i][sysi.dm_mask]))
+            E_probe = jacobian.dot(xp.array(probes[i][sysi.dm_mask.astype(bool)]))
             E_probe = E_probe[::2] + 1j*E_probe[1::2]
         elif (use=='model' or use=='m') and model is not None:
             if i==0: 
@@ -55,6 +55,7 @@ def run_pwp_bp(sysi,
             model.add_dm(-probes[i])
             
             E_probe = E_full_probe - E_full
+            print(type(E_probe))
             
 #             model.add_dm(probes[i])
 #             E_full_probe_pos = model.calc_psf()[dark_mask]
@@ -69,6 +70,8 @@ def run_pwp_bp(sysi,
             
         if plot:
             E_probe_2d = xp.zeros((sysi.npsf,sysi.npsf), dtype=xp.complex128)
+            print(xp)
+            print(type(E_probe_2d), type(dark_mask))
             xp.place(E_probe_2d, mask=dark_mask, vals=E_probe)
             imshows.imshow2(xp.abs(E_probe_2d), xp.angle(E_probe_2d),
                             f'Probe {i+1}: '+'$|E_{probe}|$', f'Probe {i+1}: '+r'$\angle E_{probe}$')
