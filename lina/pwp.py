@@ -68,7 +68,7 @@ def run_pwp_bp(sysi,
 #             E_probe = (E_full_probe_pos-E_full_probe_neg) - E_full
             
         if plot:
-            E_probe_2d = xp.zeros((sysi.npsf,sysi.npsf), dtype=np.complex128)
+            E_probe_2d = xp.zeros((sysi.npsf,sysi.npsf), dtype=xp.complex128)
             xp.place(E_probe_2d, mask=dark_mask, vals=E_probe)
             imshows.imshow2(xp.abs(E_probe_2d), xp.angle(E_probe_2d),
                             f'Probe {i+1}: '+'$|E_{probe}|$', f'Probe {i+1}: '+r'$\angle E_{probe}$')
@@ -93,7 +93,9 @@ def run_pwp_bp(sysi,
     xp.place(E_est_2d, mask=dark_mask, vals=E_est)
     
     if plot or plot_est:
-        imshows.imshow2(xp.abs(E_est_2d)**2, xp.angle(E_est_2d), lognorm1=True, pxscl=sysi.psf_pixelscale_lamD)
+        imshows.imshow2(xp.abs(E_est_2d)**2, xp.angle(E_est_2d), 
+                        'Estimated Intensity', 'Estimated Phase',
+                        lognorm1=True, pxscl=sysi.psf_pixelscale_lamD)
     return E_est_2d
 
 def run_pwp_redmond(sysi, dark_mask, 
@@ -151,7 +153,8 @@ def run_pwp_redmond(sysi, dark_mask,
         E_probe_2d = np.zeros((sysi.npsf,sysi.npsf), dtype=np.complex128)
         np.place(E_probe_2d, mask=dark_mask, 
                  vals=E_probes[i*2*nmask : (i+1)*2*nmask ][:nmask] + 1j*E_probes[i*2*nmask : (i+1)*2*nmask ][nmask:])
-        misc.myimshow2(np.abs(E_probe_2d), np.angle(E_probe_2d), 'E_probe Amp', 'E_probe Phase')
+        if display:
+            misc.myimshow2(np.abs(E_probe_2d), np.angle(E_probe_2d), 'E_probe Amp', 'E_probe Phase')
         
     B = np.diag(np.ones((nmask,2*nmask))[0], k=0)[:nmask,:2*nmask] + np.diag(np.ones((nmask,2*nmask))[0], k=nmask)[:nmask,:2*nmask]
     misc.myimshow(B, figsize=(10,4))
