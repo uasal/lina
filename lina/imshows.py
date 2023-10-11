@@ -231,7 +231,7 @@ def imshow3(arr1, arr2, arr3,
     
     norm1 = LogNorm(vmin=vmin1,vmax=vmax1) if lognorm1 or lognorm else Normalize(vmin=vmin1,vmax=vmax1)
     norm2 = LogNorm(vmin=vmin2,vmax=vmax2) if lognorm2 or lognorm else Normalize(vmin=vmin2,vmax=vmax2)
-    norm3 = LogNorm(vmin=vmin2,vmax=vmax2) if lognorm3 or lognorm else Normalize(vmin=vmin3,vmax=vmax3)
+    norm3 = LogNorm(vmin=vmin3,vmax=vmax3) if lognorm3 or lognorm else Normalize(vmin=vmin3,vmax=vmax3)
     
     # first plot
     im = ax[0].imshow(arr1, cmap=cmap1, norm=norm1, extent=extent1)

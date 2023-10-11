@@ -32,12 +32,10 @@ def pad_or_crop( arr_in, npix ):
     return arr_out
 
 
-def map_acts_to_dm(actuators, dm_mask, Nact=34):
-    inds = xp.where(xp.array(dm_mask).flatten().astype(int))[0]
-    
+def map_acts_to_dm(actuators, dm_mask):
+    Nact = dm_mask.shape[0]
     command = xp.zeros((Nact, Nact))
-    command.ravel()[inds] = actuators
-    
+    command.ravel()[dm_mask.ravel()] = actuators
     return command
 
 # Create control matrix
@@ -318,7 +316,7 @@ def create_sinc_probe(Nacts, amp, probe_radius, probe_phase=0, offset=(0,0), bad
         probe_commands = amp * np.sinc(f*Xacts)*np.sinc(f*Yacts)
     return probe_commands
 
-def create_sinc_probes(Npairs, Nact, dm_mask, probe_amplitude, probe_radius=10, probe_offset=(0,0)):
+def create_sinc_probes(Npairs, Nact, dm_mask, probe_amplitude, probe_radius=10, probe_offset=(0,0), plot=False):
     
     probe_phases = np.linspace(0, np.pi*(Npairs-1)/Npairs, Npairs)
     
@@ -332,8 +330,13 @@ def create_sinc_probes(Npairs, Nact, dm_mask, probe_amplitude, probe_radius=10, 
         probe = create_sinc_probe(Nact, probe_amplitude, probe_radius, probe_phases[i], offset=probe_offset, bad_axis=axis)
             
         probes.append(probe*dm_mask)
+    probes = np.array(probes)
+    if plot:
+        for i,probe in enumerate(probes):
+            probe_response = np.abs(np.fft.fftshift(np.fft.fft2(np.fft.ifftshift( pad_or_crop(probe, int(4*Nact))  ))))
+            imshows.imshow2(probe, probe_response, pxscl2=1/4)
     
-    return np.array(probes)
+    return probes
     
 def get_radial_dist(shape, scaleyx=(1.0, 1.0), cenyx=None):
     '''
@@ -401,4 +404,6 @@ def load_pickle(fpath):
     infile = open(str(fpath),'rb')
     pkl_data = pickle.load(infile)
     infile.close()
-    return pkl_data   
+    return pkl_data  
+
+
