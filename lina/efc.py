@@ -240,12 +240,13 @@ def run_efc_pwp(sysi,
         # print(f'\tMean NI of this iteration: {mean_ni:.3e}')
 
         if plot_current or plot_all:
-
+            vmax = xp.max(xp.concatenate([xp.abs(estimates[i])**2, image]))
             imshows.imshow3(dm_commands[i], xp.abs(estimates[i])**2, image, 
                             'DM','Estimated Intensity', f'Image: Iteration {i+starting_iteration+1}\nMean NI: {mean_ni:.3e}',
                             cmap1='viridis',
                             lognorm2=True, pxscl2=sysi.psf_pixelscale_lamD, xlabel2='$\lambda/D$',
                             lognorm3=True, pxscl3=sysi.psf_pixelscale_lamD, xlabel3='$\lambda/D$',
+                            vmax2=vmax, vmax3=vmax,
                             # vmin2=1e-11, vmin3=1e-11,
                             )
 

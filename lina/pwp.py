@@ -55,23 +55,12 @@ def run_pwp_bp(sysi,
             model.add_dm(-probes[i])
             
             E_probe = E_full_probe - E_full
-            print(type(E_probe))
-            
-#             model.add_dm(probes[i])
-#             E_full_probe_pos = model.calc_psf()[dark_mask]
-#             model.add_dm(-probes[i])
-            
-#             model.add_dm(-probes[i])
-#             E_full_probe_neg = model.calc_psf()[dark_mask]
-#             model.add_dm(probes[i])
-            
-#             probe_amp = np.max(probes[i])
-#             E_probe = (E_full_probe_pos-E_full_probe_neg) - E_full
+            # print(type(E_probe))
             
         if plot:
             E_probe_2d = xp.zeros((sysi.npsf,sysi.npsf), dtype=xp.complex128)
-            print(xp)
-            print(type(E_probe_2d), type(dark_mask))
+            # print(xp)
+            # print(type(E_probe_2d), type(dark_mask))
             xp.place(E_probe_2d, mask=dark_mask, vals=E_probe)
             imshows.imshow2(xp.abs(E_probe_2d), xp.angle(E_probe_2d),
                             f'Probe {i+1}: '+'$|E_{probe}|$', f'Probe {i+1}: '+r'$\angle E_{probe}$')
