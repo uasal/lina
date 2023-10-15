@@ -50,7 +50,6 @@ def build_jacobian(sysi,
 
     return responses
 
-
 def run_efc_perfect(sysi, 
                     jac, 
                     calibration_modes,
@@ -79,7 +78,7 @@ def run_efc_perfect(sysi,
     print('Max singular value squared:\t', s.max()**2)
     print('alpha^2:\t\t\t', alpha2) 
     
-    # calibration_modes = xp.array(calibration_modes)
+    calibration_modes = xp.array(calibration_modes)
 
     Nact = sysi.Nact
     Nmask = int(control_mask.sum())
@@ -111,7 +110,7 @@ def run_efc_perfect(sysi,
         command = (1.0-leakage)*command + loop_gain*modal_coefficients
         
         # Reconstruct the full phase from the Fourier modes
-        act_commands = calibration_modes.T.dot(utils.ensure_np_array(command))
+        act_commands = calibration_modes.T.dot(command)
         dm_command = act_commands.reshape(sysi.Nact,sysi.Nact)
 
         # Set the current DM state

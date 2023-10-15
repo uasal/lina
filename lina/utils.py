@@ -11,6 +11,7 @@ import scipy
 from scipy.linalg import hadamard
 
 from astropy.io import fits
+import pickle
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
