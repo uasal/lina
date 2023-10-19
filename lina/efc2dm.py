@@ -15,8 +15,29 @@ iefc_data_dir = Path('/home/kianmilani/Projects/roman-cgi-iefc-data')
 def build_jacobian(sysi, 
                    calibration_amplitude, calibration_modes, 
                    control_mask, 
-                   plot_responses=False,
+                   plot=False,
                   ):
+    """_summary_
+
+    Parameters
+    ----------
+    sysi : _type_
+        _description_
+    calibration_amplitude : _type_
+        _description_
+    calibration_modes : _type_
+        _description_
+    control_mask : _type_
+        _description_
+    plot : bool, optional
+        _description_, by default False
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+
     start = time.time()
     
     Nmodes = calibration_modes.shape[0]
@@ -53,7 +74,7 @@ def build_jacobian(sysi,
     print()
     print('Jacobian built in {:.3f} sec'.format(time.time()-start))
     
-    if plot_responses:
+    if plot:
         responses = response_matrix[::2] + 1j*response_matrix[1::2]
         dm_rms = xp.sqrt(xp.mean(xp.abs(responses.dot(xp.array(calibration_modes)))**2, axis=0))
         dm1_rms = dm_rms[:sysi.Nact**2].reshape(sysi.Nact, sysi.Nact)

@@ -18,7 +18,33 @@ def run_pwp_bp(sysi,
                use='J', jacobian=None, model=None, 
                plot=False,
                plot_est=False):
-    Ndh = int(dark_mask.sum())
+    """_summary_
+
+    Parameters
+    ----------
+    sysi : _type_
+        _description_
+    dark_mask : _type_
+        _description_
+    probes : _type_
+        _description_
+    use : str, optional
+        _description_, by default 'J'
+    jacobian : _type_, optional
+        _description_, by default None
+    model : _type_, optional
+        _description_, by default None
+    plot : bool, optional
+        _description_, by default False
+    plot_est : bool, optional
+        _description_, by default False
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+    Nmask = int(dark_mask.sum())
     
     dm_ref = sysi.get_dm()
     amps = np.linspace(-1, 1, 2) # for generating a negative and positive probe
@@ -40,8 +66,8 @@ def run_pwp_bp(sysi,
         if plot:
             imshows.imshow3(Ip[i], In[i], Ip[i]-In[i], lognorm1=True, lognorm2=True, pxscl=sysi.psf_pixelscale_lamD)
             
-    E_probes = xp.zeros((probes.shape[0], 2*Ndh))
-    I_diff = xp.zeros((probes.shape[0], Ndh))
+    E_probes = xp.zeros((probes.shape[0], 2*Nmask))
+    I_diff = xp.zeros((probes.shape[0], Nmask))
     for i in range(len(probes)):
         if (use=='jacobian' or use.lower()=='j') and jacobian is not None:
             E_probe = jacobian.dot(xp.array(probes[i][sysi.dm_mask.astype(bool)]))
@@ -71,8 +97,8 @@ def run_pwp_bp(sysi,
         I_diff[i:(i+1), :] = (Ip[i] - In[i])[dark_mask]
     
     # Use batch process to estimate each pixel individually
-    E_est = xp.zeros(Ndh, dtype=xp.complex128)
-    for i in range(Ndh):
+    E_est = xp.zeros(Nmask, dtype=xp.complex128)
+    for i in range(Nmask):
         delI = I_diff[:, i]
         M = 4*xp.array([E_probes[:,2*i], E_probes[:,2*i + 1]]).T
         Minv = xp.linalg.pinv(M.T@M, 1e-2)@M.T
