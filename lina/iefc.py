@@ -11,14 +11,28 @@ from IPython.display import display, clear_output
 
 # def take_measurement(system_interface, probe_cube, probe_amplitude, return_all=False, pca_modes=None):
 def take_measurement(sysi, probe_cube, probe_amplitude, return_all=False, pca_modes=None, plot=False):
+    """_summary_
 
-#     if probe_cube.shape[0]==2:
-#         differential_operator = xp.array([[-1,1,0,0],
-#                                           [0,0,-1,1]]) / (2 * probe_amplitude)
-#     elif probe_cube.shape[0]==3:
-#         differential_operator = xp.array([[-1,1,0,0,0,0],
-#                                           [0,0,-1,1,0,0],
-#                                           [0,0,0,0,-1,1]]) / (2 * probe_amplitude)
+    Parameters
+    ----------
+    sysi : object
+        The object of a system interface with methods for DM control and image 
+    probe_cube : xp.ndarray
+        3D array of probes to measure difference images of, shape of (Nprobes, Nact, Nact)
+    probe_amplitude : _type_
+        _description_
+    return_all : bool, optional
+        _description_, by default False
+    pca_modes : _type_, optional
+        _description_, by default None
+    plot : bool, optional
+        _description_, by default False
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
 
     differential_operator = []
     for i in range(len(probe_cube)):

@@ -13,6 +13,22 @@ def build_jacobian(sysi,
                    control_mask, 
                    plot=False,
                   ):
+    """_summary_
+
+    Parameters
+    ----------
+    sysi : object
+        The object of a system interface with methods for DM control and image capture
+    calibration_modes : xp.ndarray
+        2D array of modes to be calibrated in the Jacobian, shape of (Nmodes, Nact**2)
+    calibration_amp : float
+        amplitude to be applied to each calibration mode while Jacobian is computed
+    control_mask : xp.ndarray
+        the boolean mask defining the focal plane pixels in the control region
+    plot : bool, optional
+        whether of not to plot the RMS response of DM actuators, by default False
+    """
+
     start = time.time()
     
     amps = np.linspace(-calibration_amp, calibration_amp, 2) # for generating a negative and positive actuator poke
@@ -50,28 +66,71 @@ def build_jacobian(sysi,
 
     return responses
 
+def run(sysi, 
+        jac, 
+        calibration_modes,
+        control_matrix,
+        control_mask, 
+        pwp_fun=None,
+        pwp_params=None,
+        loop_gain=0.5, 
+        leakage=0.0,
+        iterations=5, 
+        plot_all=False, 
+        plot_current=True,
+        plot_sms=False,
+        plot_radial_contrast=False,
+        old_images=None,
+        old_fields=None,
+        old_commands=None,
+        ):
+    """_summary_
 
-def run_efc_perfect(sysi, 
-                    jac, 
-                    calibration_modes,
-                    control_matrix,
-                    control_mask, 
-                    Imax_unocc=1,
-                    loop_gain=0.5, 
-                    leakage=0.0,
-                    iterations=5, 
-                    plot_all=False, 
-                    plot_current=True,
-                    plot_sms=False,
-                    plot_radial_contrast=False,
-                    old_images=None,
-                    old_dm_commands=None,
-                    ):
-    # This function is only for running EFC simulations
-    print('Beginning closed-loop EFC simulation.')    
-    commands = np.zeros((iterations, sysi.Nact, sysi.Nact), dtype=np.float64)
-    efields = xp.zeros((iterations, sysi.npsf, sysi.npsf), dtype=xp.complex128)
-    images = xp.zeros((iterations, sysi.npsf, sysi.npsf), dtype=xp.float64)
+    Parameters
+    ----------
+    sysi : object
+        The object of a system interface with methods for DM control and image capture
+    jac : xp.ndarray
+        The pre-computed Jacobian
+    calibration_modes : xp.ndarray
+        2D array of modes to be calibrated in the Jacobian, shape of (Nmodes, Nact**2)
+    control_matrix : xp.ndarray
+        the control matrix used to compute DM commands from the calculated electric field
+    control_mask : xp.ndarray
+        the boolean mask defining the focal plane pixels in the control region
+    loop_gain : float, optional
+        how much gain to apply to the computed DM command, 
+        should be less than 1 for controller stability, 
+        by default 0.5
+    leakage : float, optional
+       how much leakage to apply to the previously computed DM commands, 
+       helps reduce stroke on the DM, 
+       by default 0.0
+    iterations : int, optional
+        number of iterations for which EFC should run, by default 5
+    plot_all : bool, optional
+        plot results of all iterations, by default False
+    plot_current : bool, optional
+        plot current iteration results, by default True
+    plot_sms : bool, optional
+        plot the Singular Mode Spectrum to analyze the dark hole quality,
+        FIXME: cite the paper that described this
+        by default False
+    plot_radial_contrast : bool, optional
+        _description_, by default False
+    old_images : _type_, optional
+        3D array of images from previous iterations, by default None
+    old_fields: _type_, optional
+        3D array of electric fields estimated or computed during previous iterations, by default None
+    old_commands : _type_, optional
+        3D array of DM commands computed during previous iterations, by default None
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+    print('Beginning closed-loop EFC.')    
     start = time.time()
     
     U, s, V = xp.linalg.svd(jac, full_matrices=False)
@@ -79,14 +138,14 @@ def run_efc_perfect(sysi,
     print('Max singular value squared:\t', s.max()**2)
     print('alpha^2:\t\t\t', alpha2) 
     
-    # calibration_modes = xp.array(calibration_modes)
+    calibration_modes = xp.array(calibration_modes)
 
     Nact = sysi.Nact
     Nmask = int(control_mask.sum())
     
-    # The metric
-    # efields = []
+    # The metrics
     metric_images = []
+    fields = []
     dm_commands = []
 
     dm_ref = sysi.get_dm()
@@ -101,7 +160,13 @@ def run_efc_perfect(sysi,
     for i in range(iterations):
         print(f'\tRunning iteration {i+1+starting_iteration}/{iterations+starting_iteration}.')
         
-        electric_field = sysi.calc_psf() # no PWP, just use model
+        if pwp_fun is not None and pwp_params is not None:
+            print('Using PWP to estimate electric field')
+            electric_field = pwp_fun(sysi, control_mask, **pwp_params)
+        else:
+            print('Using model to compute electric field')
+            electric_field = sysi.calc_psf() # no PWP, just use model
+        
         efield_ri = xp.zeros(2*Nmask)
 
         efield_ri[::2] = electric_field[control_mask].real
@@ -111,7 +176,7 @@ def run_efc_perfect(sysi,
         command = (1.0-leakage)*command + loop_gain*modal_coefficients
         
         # Reconstruct the full phase from the Fourier modes
-        act_commands = calibration_modes.T.dot(utils.ensure_np_array(command))
+        act_commands = calibration_modes.T.dot(command)
         dm_command = act_commands.reshape(sysi.Nact,sysi.Nact)
 
         # Set the current DM state
@@ -124,17 +189,17 @@ def run_efc_perfect(sysi,
 
         # efields.append([copy.copy(electric_field)])
         metric_images.append(copy.copy(image))
+        fields.append(copy.copy(electric_field))
         dm_commands.append(sysi.get_dm())
         
         mean_ni = xp.mean(image.ravel()[control_mask.ravel()])
-        # print(f'\tMean NI of this iteration: {mean_ni:.3e}')
 
         if plot_current or plot_all:
 
             imshows.imshow2(dm_commands[i], image, 
-                               'DM', f'Image: Iteration {i+starting_iteration+1}\nMean NI: {mean_ni:.3e}',
+                            'DM', f'Image: Iteration {i+starting_iteration+1}\nMean NI: {mean_ni:.3e}',
                             cmap1='viridis',
-                               lognorm2=True, vmin2=1e-11, pxscl2=sysi.psf_pixelscale_lamD, xlabel2='$\lambda/D$')
+                            lognorm2=True, vmin2=1e-11, pxscl2=sysi.psf_pixelscale_lamD, xlabel2='$\lambda/D$')
 
             if plot_sms:
                 sms_fig = sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
@@ -145,133 +210,19 @@ def run_efc_perfect(sysi,
             if not plot_all: clear_output(wait=True)
 
     metric_images = xp.array(metric_images)
+    fields = xp.array(fields)
     dm_commands = xp.array(dm_commands)
     
     if old_images is not None:
         metric_images = xp.concatenate([old_images, metric_images], axis=0)
-    if old_dm_commands is not None: 
-        dm_commands = xp.concatenate([old_dm_commands, dm_commands], axis=0)
+    if old_fields is not None:
+        metric_images = xp.concatenate([old_fields, fields], axis=0)
+    if old_commands is not None: 
+        dm_commands = xp.concatenate([old_commands, dm_commands], axis=0)
                 
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
     return metric_images, dm_commands
-
-def run_efc_pwp(sysi, 
-                pwp_fun,
-                pwp_kwargs,
-                jac, 
-                calibration_modes,
-                control_matrix,
-                control_mask, 
-                Imax_unocc=1,
-                loop_gain=0.5, 
-                leakage=0.0,
-                iterations=5, 
-                plot_all=False, 
-                plot_current=True,
-                plot_sms=False,
-                plot_radial_contrast=False,
-                old_images=None,
-                old_estimates=None,
-                old_dm_commands=None,
-                ):
-    # This function is only for running EFC simulations
-    print('Beginning closed-loop EFC simulation.')    
-    commands = np.zeros((iterations, sysi.Nact, sysi.Nact), dtype=np.float64)
-    efields = xp.zeros((iterations, sysi.npsf, sysi.npsf), dtype=xp.complex128)
-    images = xp.zeros((iterations, sysi.npsf, sysi.npsf), dtype=xp.float64)
-    start = time.time()
-    
-    U, s, V = xp.linalg.svd(jac, full_matrices=False)
-    alpha2 = xp.max( xp.diag( xp.real( jac.conj().T @ jac ) ) )
-    print('Max singular value squared:\t', s.max()**2)
-    print('alpha^2:\t\t\t', alpha2) 
-    
-    # calibration_modes = xp.array(calibration_modes)
-
-    Nact = sysi.Nact
-    Nmask = int(control_mask.sum())
-    
-    # The metric
-    # efields = []
-    metric_images = []
-    dm_commands = []
-    estimates = []
-
-    dm_ref = sysi.get_dm()
-    command = 0.0
-    dm_command = 0.0
-
-    if old_images is None:
-        starting_iteration = 0
-    else:
-        starting_iteration = len(old_images) - 1
-
-    for i in range(iterations):
-        print(f'\tRunning iteration {i+1+starting_iteration}/{iterations+starting_iteration}.')
-        
-        electric_field = pwp_fun(sysi, control_mask, **pwp_kwargs)
-        efield_ri = xp.zeros(2*Nmask)
-
-        efield_ri[::2] = electric_field[control_mask].real
-        efield_ri[1::2] = electric_field[control_mask].imag
-
-        modal_coefficients = -control_matrix.dot(efield_ri)
-        command = (1.0-leakage)*command + loop_gain*modal_coefficients
-        
-        # Reconstruct the full phase from the Fourier modes
-        act_commands = calibration_modes.T.dot(utils.ensure_np_array(command))
-        dm_command = act_commands.reshape(sysi.Nact,sysi.Nact)
-
-        # Set the current DM state
-        sysi.set_dm(dm_ref + dm_command)
-        
-        # Take an image to estimate the metrics
-        # electric_field = sysi.calc_psf()
-        # image = xp.abs(electric_field)**2
-        image = sysi.snap()
-
-        # efields.append([copy.copy(electric_field)])
-        metric_images.append(copy.copy(image))
-        estimates.append(copy.copy(electric_field))
-        dm_commands.append(sysi.get_dm())
-        
-        mean_ni = xp.mean(image.ravel()[control_mask.ravel()])
-        # print(f'\tMean NI of this iteration: {mean_ni:.3e}')
-
-        if plot_current or plot_all:
-            vmax = xp.max(xp.concatenate([xp.abs(estimates[i])**2, image]))
-            imshows.imshow3(dm_commands[i], xp.abs(estimates[i])**2, image, 
-                            'DM','Estimated Intensity', f'Image: Iteration {i+starting_iteration+1}\nMean NI: {mean_ni:.3e}',
-                            cmap1='viridis',
-                            lognorm2=True, pxscl2=sysi.psf_pixelscale_lamD, xlabel2='$\lambda/D$',
-                            lognorm3=True, pxscl3=sysi.psf_pixelscale_lamD, xlabel3='$\lambda/D$',
-                            vmax2=vmax, vmax3=vmax,
-                            # vmin2=1e-11, vmin3=1e-11,
-                            )
-
-            if plot_sms:
-                sms_fig = sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
-
-            if plot_radial_contrast:
-                utils.plot_radial_contrast(image, control_mask, sysi.psf_pixelscale_lamD, nbins=100)
-            
-            if not plot_all: clear_output(wait=True)
-
-    metric_images = xp.array(metric_images)
-    estimates = xp.array(estimates)
-    dm_commands = xp.array(dm_commands)
-    
-    if old_images is not None:
-        metric_images = xp.concatenate([old_images, metric_images], axis=0)
-    if old_estimates is not None:
-        estimates = xp.concatenate([old_estimates, estimates], axis=0)
-    if old_dm_commands is not None: 
-        dm_commands = xp.concatenate([old_dm_commands, dm_commands], axis=0)
-                
-    print('EFC completed in {:.3f} sec.'.format(time.time()-start))
-    
-    return metric_images, estimates, dm_commands
 
 import matplotlib.pyplot as plt
 

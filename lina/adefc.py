@@ -16,6 +16,28 @@ import imshows
 from . import utils
 
 
+def compute_E_DM(actuators, forward_model, model_params):
+    E_DM = forward_model(model_params['actuators'], model_params['pupil'], model_params['wfe'], model_params['fpm'], model_params['lyot'],
+                         model_params['inf_matrix'], model_params['inf_pixelscale'],
+                         model_params['npix'], model_params['oversample'], Imax_ref=model_params['Imax_ref'])
+
+    return E_DM
+
+def cost_fun(actuators, I_tar_ratio=1/2, eta_00=1,):
+    '''
+    acts: the actuator vector we want to find an optimal solution for
+    I_tar_ratio: ratio for the desired target irradiance based on current integrated irradiance
+    eta_00: parameter that Scott understands more
+    E_ab: current electric-field estimate
+    '''
+    E_DM = compute_E_DM(actuators)[control_mask]
+    E_DZ = E_ab[control_mask] + E_DM
+    I_DZ = jnp.abs(E_DZ.conj().dot(E_DZ))
+    I_tar = I_tar_ratio * I_DZ
+    J = actuators.T.dot(actuators) + eta_00 * ((I_DZ - I_tar)/I_tar)**2
+    return J
+
+
 def run(sysi, 
         estimation='perfect',
         estimation_params=None,
