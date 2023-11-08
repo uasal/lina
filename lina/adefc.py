@@ -1,9 +1,4 @@
 import numpy as np
-try:
-    import cupy as cp
-    xp = cp
-except ImportError:
-    xp = np
     
 import poppy
 
