@@ -39,10 +39,10 @@ from poppy import zernike
 def fdpr(fit_mask, images, defocus_values, tol=1e-6, reg=0, wreg=10):
 
     # PV to RMS and sign convention change
-    Ediv = get_defocus_probes(fit_mask, -0.25 * cp.asarray(defocus_values))
+    Ediv = get_defocus_probes(fit_mask, cp.asarray(defocus_values))
 
     # phase retrieval parameters
-    modes = cp.asnumpy(pp.zernike.arbitrary_basis(fit_mask, nterms=100, outside=0))
+    modes = cp.asnumpy(pp.zernike.arbitrary_basis(fit_mask, nterms=37, outside=0))
 
     # square-ify the PSFs
     dims = int(np.sqrt(images[0].shape))
@@ -50,7 +50,7 @@ def fdpr(fit_mask, images, defocus_values, tol=1e-6, reg=0, wreg=10):
                           images[1].to_dict()['values'].reshape(dims, dims)])
 
     # run phase retrieval
-    prdict = run_phase_retrieval(psfs_sq, fit_mask, tol, reg, wreg, Ediv, modes=modes, fit_amp=False)
+    prdict = run_phase_retrieval(psfs_sq, fit_mask, tol, reg, wreg, Ediv, modes=None, fit_amp=False)
 
     return prdict
 
