@@ -48,7 +48,7 @@ def calibrate(sysi,
 
             if scc_fun is None: # using the model to build the Jacobian
                 sysi.add_dm(amp*mode)
-                wavefront = sysi.calc_psf()
+                wavefront = sysi.calc_wf()
                 response += amp * wavefront.flatten() / (2*np.var(amps))
                 sysi.add_dm(-amp*mode)
             elif scc_fun is not None and scc_params is not None:
@@ -75,7 +75,6 @@ def calibrate(sysi,
     return responses
 
 def run(sysi, 
-        jac, 
         calibration_modes,
         control_matrix,
         control_mask, 
@@ -101,8 +100,6 @@ def run(sysi,
     ----------
     sysi : object
         The object of a system interface with methods for DM control and image capture
-    jac : xp.ndarray
-        The pre-computed Jacobian
     calibration_modes : xp.ndarray
         2D array of modes to be calibrated in the Jacobian, shape of (Nmodes, Nact**2)
     control_matrix : xp.ndarray
@@ -144,10 +141,10 @@ def run(sysi,
     print('Beginning closed-loop EFC.')    
     start = time.time()
     
-    U, s, V = xp.linalg.svd(jac, full_matrices=False)
-    alpha2 = xp.max( xp.diag( xp.real( jac.conj().T @ jac ) ) )
-    print('Max singular value squared:\t', s.max()**2)
-    print('alpha^2:\t\t\t', alpha2) 
+    # U, s, V = xp.linalg.svd(jac, full_matrices=False)
+    # alpha2 = xp.max( xp.diag( xp.real( jac.conj().T @ jac ) ) )
+    # print('Max singular value squared:\t', s.max()**2)
+    # print('alpha^2:\t\t\t', alpha2) 
     
     calibration_modes = xp.array(calibration_modes)
 
@@ -172,11 +169,11 @@ def run(sysi,
         print(f'\tRunning iteration {i+1+starting_iteration}/{iterations+starting_iteration}.')
         
         if est_fun is not None and est_params is not None:
-            print('Using PWP to estimate electric field')
+            print(f'Using {est_fun.__name__} to estimate electric field')
             electric_field = est_fun(sysi, **est_params)
         else:
             print('Using model to compute electric field')
-            electric_field = sysi.calc_psf() # no PWP, just use model
+            electric_field = sysi.calc_wf() # no PWP, just use model
         
         efield_ri = xp.zeros(2*Nmask)
 
@@ -191,7 +188,6 @@ def run(sysi,
         dm_command = act_commands.reshape(sysi.Nact,sysi.Nact)
 
         # Set the current DM state
-        print(type(dm_ref), type(dm_command))
         sysi.set_dm(dm_ref + dm_command)
         
         # Take an image to estimate the metrics
@@ -211,7 +207,8 @@ def run(sysi,
             imshows.imshow2(dm_commands[i], image, 
                             'DM', f'Image: Iteration {i+starting_iteration+1}\nMean NI: {mean_ni:.3e}',
                             cmap1='viridis',
-                            lognorm2=True, vmin2=1e-11, pxscl2=sysi.psf_pixelscale_lamD, xlabel2='$\lambda/D$')
+                            lognorm2=True, vmin2=1e-11, 
+                            pxscl2=sysi.psf_pixelscale_lamD, xlabel2='$\lambda/D$',)
 
             if plot_sms:
                 sms_fig = sms(U, s, alpha2, efield_ri, Nmask, i)
@@ -239,7 +236,6 @@ def run(sysi,
 import matplotlib.pyplot as plt
 
 def sms(U, s, alpha2, electric_field, N_DH, itr): 
-    # jac: system jacobian
     # electric_field: the electric field acquired by estimation or from the model
     Imax_unocc = 1 # assuming that all the images are already normalized
 
