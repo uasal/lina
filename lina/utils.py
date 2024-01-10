@@ -233,18 +233,18 @@ def create_random_probes(rms, alpha, dm_mask, fmin=1, fmax=17, nprobes=3,
 
 def create_hadamard_modes(dm_mask): 
     Nacts = dm_mask.sum().astype(int)
-    np2 = 2**int(np.ceil(np.log2(Nacts)))
-    hmodes = scipy.linalg.hadamard(np2)
+    np2 = 2**int(xp.ceil(xp.log2(Nacts)))
+    hmodes = xp.array(scipy.linalg.hadamard(np2))
     
     had_modes = []
 
-    inds = np.where(dm_mask.flatten().astype(int))
+    inds = xp.where(dm_mask.flatten().astype(int))
     for hmode in hmodes:
         hmode = hmode[:Nacts]
-        mode = np.zeros((dm_mask.shape[0]**2))
+        mode = xp.zeros((dm_mask.shape[0]**2))
         mode[inds] = hmode
         had_modes.append(mode)
-    had_modes = np.array(had_modes)
+    had_modes = xp.array(had_modes)
     
     return had_modes
 

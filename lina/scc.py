@@ -4,6 +4,8 @@ from . import imshows
 import time
 import copy
 
+import numpy as np
+
 from IPython.display import display, clear_output
 
 def estimate_coherent(sysi, r_npix=0, shift=(0,0), dark_mask=None, plot=False, plot_est=False):
@@ -39,7 +41,13 @@ def estimate_coherent(sysi, r_npix=0, shift=(0,0), dark_mask=None, plot=False, p
     # im_fft_masked *= xp.sqrt((im_fft_sum-im_fft_masked_sum)/im_fft_masked_sum)
     
     if plot:
-        imshows.imshow3(mask, xp.abs(im_fft_shift), xp.abs(im_fft_masked), lognorm2=True, lognorm3=True)
+        fig,ax = imshows.imshow3(mask, xp.abs(im_fft_shift), xp.abs(im_fft_masked), lognorm2=True, lognorm3=True,
+                                 display_fig=False, return_fig=True)
+        ax[1].grid()
+        ax[1].set_xticks(np.linspace(0, im_fft_shift.shape[0], 7))
+        ax[1].set_yticks(np.linspace(0, im_fft_shift.shape[0], 7))
+
+        display(fig)
     
     E_est = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(im_fft_masked), norm='ortho'))
 
