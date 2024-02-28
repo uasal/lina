@@ -47,10 +47,11 @@ def fdpr(fit_mask, images, defocus_values, tol=1e-6, reg=0, wreg=10):
     # square-ify the PSFs
     dims = int(np.sqrt(images[0].shape))
     psfs_sq = cp.asarray([images[0].to_dict()['values'].reshape(dims, dims), 
-                          images[1].to_dict()['values'].reshape(dims, dims)])
+                          images[1].to_dict()['values'].reshape(dims, dims),
+                          images[2].to_dict()['values'].reshape(dims, dims)])
 
     # run phase retrieval
-    prdict = run_phase_retrieval(psfs_sq, fit_mask, tol, reg, wreg, Ediv, modes=None, fit_amp=False)
+    prdict = run_phase_retrieval(psfs_sq, fit_mask, tol, reg, wreg, Ediv, modes=modes, fit_amp=False)
 
     return prdict
 
