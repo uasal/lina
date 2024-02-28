@@ -6,15 +6,17 @@ import copy
 
 from IPython.display import display, clear_output
 
-def estimate_coherent(sysi, r_npix=0, shift=(0,0), dark_mask=None, plot=False):
+def estimate_coherent(sysi, r_npix=0, shift=(0,0), image=None, dark_mask=None, plot=False):
     '''
     r_npix:
         radius of sidebands in units of pixels
     shift:
         location of sideband centers in pixels (from center of array)
     '''
-
-    im = sysi.snap()
+    if image is None:
+        im = sysi.snap()
+    else:
+        im = image
     
     if dark_mask is not None:
         im *= dark_mask
