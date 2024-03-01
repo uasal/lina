@@ -51,7 +51,7 @@ def estimate_coherent(sysi, scc_ref_image, r_npix, shift, sci_image=None, dark_m
     # norm = (xp.abs(E_est) ** 2).max()
     # E_est *= xp.sqrt(im_max / norm)
         
-    E_est / scc_ref_image
+    E_est /= xp.sqrt(xp.asarray(scc_ref_image))
 
     return E_est
 
