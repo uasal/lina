@@ -109,9 +109,9 @@ def calibrate(sysi,
     print('Calibrating iEFC...')
     Nmodes = calibration_modes.shape[0]
     
-    response_cube = []
+    response_matrix = []
     if return_all:
-        response_matrix = []
+        response_cube = []
     # Loop through all modes that you want to control
     start = time.time()
     for ci, calibration_mode in enumerate(calibration_modes[start_mode::]):
@@ -218,7 +218,7 @@ def run(sysi,
     print('Running iEFC ...')
     start = time.time()
     
-    dm_commands = np.zeros((num_iterations, sysi.Nact, sysi.Nact), dtype=np.float64)
+    dm_commands = xp.zeros((num_iterations, sysi.Nact, sysi.Nact), dtype=np.float64)
     metric_images = xp.zeros((num_iterations, sysi.npsf, sysi.npsf), dtype=xp.float64)
     
     dm_ref = sysi.get_dm()
@@ -231,10 +231,10 @@ def run(sysi,
         measurement_vector = diff_images[:, control_mask.ravel()].ravel()
         delta_coefficients = control_matrix.dot( measurement_vector )
         modal_coeff = (1.0-leakage)*modal_coeff + loop_gain*delta_coefficients
-        
+        # print(type(calibration_modes), type(modal_coeff))
         # Reconstruct the full phase from the Fourier modes
-        dm_command = -calibration_modes.T.dot(ensure_np_array(modal_coeff)).reshape(sysi.Nact,sysi.Nact)
-        sysi.set_dm(dm_ref + dm_command)
+        dm_command = -calibration_modes.T.dot(modal_coeff).reshape(sysi.Nact,sysi.Nact)
+        sysi.add_dm(dm_command)
         
         # Take an image to estimate the metrics
         image = sysi.snap()
@@ -248,13 +248,13 @@ def run(sysi,
         if plot_current: 
             if not plot_all: clear_output(wait=True)
             imshows.imshow3(dm_commands[i], image, image*control_mask,
-                            'DM Command', f'Image: Iteration {i}',
+                            'DM Command', f'Image: Iteration {i+1}',
                             pxscl2=sysi.psf_pixelscale_lamD, pxscl3=sysi.psf_pixelscale_lamD, 
                             lognorm2=True, lognorm3=True
 #                             vmin2=1e-11,
                            )
             if plot_radial_contrast:
-                utils.plot_radial_contrast(image, control_mask, sysi.psf_pixelscale_lamD, nbins=100)
+                utils.plot_radial_contrast(image, control_mask, sysi.psf_pixelscale_lamD, nbins=50)
                 
     if old_images is not None:
         metric_images = xp.concatenate([old_images, metric_images], axis=0)

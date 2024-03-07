@@ -1,4 +1,4 @@
-from .math_module import xp
+from .math_module import xp, ensure_np_array
 from . import utils, scc
 from . import imshows
 
@@ -188,7 +188,7 @@ def run(sysi,
         dm_command = act_commands.reshape(sysi.Nact,sysi.Nact)
 
         # Set the current DM state
-        sysi.set_dm(dm_ref + dm_command)
+        sysi.add_dm(dm_command)
         
         # Take an image to estimate the metrics
         # electric_field = sysi.calc_psf()
