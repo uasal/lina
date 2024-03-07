@@ -10,12 +10,6 @@ from IPython.display import display, clear_output
 
 import poppy
 
-def create_zernike_modes(pupil_mask, nmodes=15):
-    
-    zernikes = poppy.zernike.arbitrary_basis(pupil_mask, nterms=nmodes, outside=0)
-
-    return zernikes
-
 def calibrate(sysi, 
               calibration_modes, calibration_amp,
               control_mask, 

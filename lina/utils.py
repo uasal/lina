@@ -10,6 +10,8 @@ import poppy
 from astropy.io import fits
 import pickle
 
+import poppy
+
 def pad_or_crop( arr_in, npix ):
     n_arr_in = arr_in.shape[0]
     if n_arr_in == npix:
@@ -118,6 +120,12 @@ def lstsq(modes, data):
     modes = modes[:, mask.ravel()].T  # transpose moves modes to columns, as needed for least squares fit
     c, *_ = xp.linalg.lstsq(modes, data, rcond=None)
     return c
+
+def create_zernike_modes(pupil_mask, nmodes=15):
+    
+    zernikes = poppy.zernike.arbitrary_basis(pupil_mask, nterms=nmodes, outside=0)
+
+    return zernikes
 
 def map_acts_to_dm(actuators, dm_mask):
     Nact = dm_mask.shape[0]
