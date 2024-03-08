@@ -1,4 +1,4 @@
-from .math_module import xp
+from .math_module import xp, ensure_np_array
 from . import utils, scc
 from . import imshows
 
@@ -8,12 +8,15 @@ import time
 import copy
 from IPython.display import display, clear_output
 
-def build_jacobian(sysi, 
-                   calibration_modes, calibration_amp,
-                   control_mask, 
-                   plot=False,
-                  ):
-    """_summary_
+def calibrate(sysi, 
+              calibration_modes, calibration_amp,
+              control_mask, 
+              scc_fun=None, scc_params=None,
+              plot=False,
+              ):
+    """
+    This function will compute the Jacobian for EFC using either the system model 
+    or the SCC estimation function. If SCC is used, this function can be used with a real instrument. 
 
     Parameters
     ----------
@@ -34,7 +37,6 @@ def build_jacobian(sysi,
     amps = np.linspace(-calibration_amp, calibration_amp, 2) # for generating a negative and positive actuator poke
     
     Nmodes = calibration_modes.shape[0]
-#     Nacts = int(sysi.dm_mask.sum())
     Nmask = int(control_mask.sum())
     
     responses = xp.zeros((2*Nmask, Nmodes))
@@ -44,10 +46,16 @@ def build_jacobian(sysi,
         for amp in amps:
             mode = mode.reshape(sysi.Nact,sysi.Nact)
 
-            sysi.add_dm(amp*mode)
-            wavefront = sysi.calc_psf()
-            response += amp * wavefront.flatten() / (2*np.var(amps))
-            sysi.add_dm(-amp*mode)
+            if scc_fun is None: # using the model to build the Jacobian
+                sysi.add_dm(amp*mode)
+                wavefront = sysi.calc_wf()
+                response += amp * wavefront.flatten() / (2*np.var(amps))
+                sysi.add_dm(-amp*mode)
+            elif scc_fun is not None and scc_params is not None:
+                sysi.add_dm(amp*mode)
+                wavefront = scc_fun(sysi, **scc_params)
+                response += amp * wavefront.flatten() / (2*np.var(amps))
+                sysi.add_dm(-amp*mode)
 
         responses[::2,i] = response[control_mask.ravel()].real
         responses[1::2,i] = response[control_mask.ravel()].imag
@@ -67,12 +75,11 @@ def build_jacobian(sysi,
     return responses
 
 def run(sysi, 
-        jac, 
         calibration_modes,
         control_matrix,
         control_mask, 
-        pwp_fun=None,
-        pwp_params=None,
+        est_fun=None,
+        est_params=None,
         loop_gain=0.5, 
         leakage=0.0,
         iterations=5, 
@@ -84,14 +91,15 @@ def run(sysi,
         old_fields=None,
         old_commands=None,
         ):
-    """_summary_
+    """
+    This method will run EFC with the supplied estimation method.
+    If the estimation method is None, it is assumed EFC is being run with a model 
+    where the electric field can be directly computed rather than estimated. 
 
     Parameters
     ----------
     sysi : object
         The object of a system interface with methods for DM control and image capture
-    jac : xp.ndarray
-        The pre-computed Jacobian
     calibration_modes : xp.ndarray
         2D array of modes to be calibrated in the Jacobian, shape of (Nmodes, Nact**2)
     control_matrix : xp.ndarray
@@ -133,10 +141,10 @@ def run(sysi,
     print('Beginning closed-loop EFC.')    
     start = time.time()
     
-    U, s, V = xp.linalg.svd(jac, full_matrices=False)
-    alpha2 = xp.max( xp.diag( xp.real( jac.conj().T @ jac ) ) )
-    print('Max singular value squared:\t', s.max()**2)
-    print('alpha^2:\t\t\t', alpha2) 
+    # U, s, V = xp.linalg.svd(jac, full_matrices=False)
+    # alpha2 = xp.max( xp.diag( xp.real( jac.conj().T @ jac ) ) )
+    # print('Max singular value squared:\t', s.max()**2)
+    # print('alpha^2:\t\t\t', alpha2) 
     
     calibration_modes = xp.array(calibration_modes)
 
@@ -160,12 +168,12 @@ def run(sysi,
     for i in range(iterations):
         print(f'\tRunning iteration {i+1+starting_iteration}/{iterations+starting_iteration}.')
         
-        if pwp_fun is not None and pwp_params is not None:
-            print('Using PWP to estimate electric field')
-            electric_field = pwp_fun(sysi, control_mask, **pwp_params)
+        if est_fun is not None and est_params is not None:
+            print(f'Using {est_fun.__name__} to estimate electric field')
+            electric_field = est_fun(sysi, **est_params)
         else:
             print('Using model to compute electric field')
-            electric_field = sysi.calc_psf() # no PWP, just use model
+            electric_field = sysi.calc_wf() # no PWP, just use model
         
         efield_ri = xp.zeros(2*Nmask)
 
@@ -180,7 +188,7 @@ def run(sysi,
         dm_command = act_commands.reshape(sysi.Nact,sysi.Nact)
 
         # Set the current DM state
-        sysi.set_dm(dm_ref + dm_command)
+        sysi.add_dm(dm_command)
         
         # Take an image to estimate the metrics
         # electric_field = sysi.calc_psf()
@@ -199,10 +207,11 @@ def run(sysi,
             imshows.imshow2(dm_commands[i], image, 
                             'DM', f'Image: Iteration {i+starting_iteration+1}\nMean NI: {mean_ni:.3e}',
                             cmap1='viridis',
-                            lognorm2=True, vmin2=1e-11, pxscl2=sysi.psf_pixelscale_lamD, xlabel2='$\lambda/D$')
+                            lognorm2=True, vmin2=1e-11, 
+                            pxscl2=sysi.psf_pixelscale_lamD, xlabel2='$\lambda/D$',)
 
             if plot_sms:
-                sms_fig = sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
+                sms_fig = sms(U, s, alpha2, efield_ri, Nmask, i)
 
             if plot_radial_contrast:
                 utils.plot_radial_contrast(image, control_mask, sysi.psf_pixelscale_lamD, nbins=100)
@@ -216,22 +225,20 @@ def run(sysi,
     if old_images is not None:
         metric_images = xp.concatenate([old_images, metric_images], axis=0)
     if old_fields is not None:
-        metric_images = xp.concatenate([old_fields, fields], axis=0)
+        fields = xp.concatenate([old_fields, fields], axis=0)
     if old_commands is not None: 
         dm_commands = xp.concatenate([old_commands, dm_commands], axis=0)
                 
     print('EFC completed in {:.3f} sec.'.format(time.time()-start))
     
-    return metric_images, dm_commands
+    return metric_images, fields, dm_commands
 
 import matplotlib.pyplot as plt
 
-def sms(U, s, alpha2, electric_field, N_DH, 
-        Imax_unocc, 
-        itr): 
-    # jac: system jacobian
+def sms(U, s, alpha2, electric_field, N_DH, itr): 
     # electric_field: the electric field acquired by estimation or from the model
-    
+    Imax_unocc = 1 # assuming that all the images are already normalized
+
     E_ri = U.conj().T.dot(electric_field)
     SMS = xp.abs(E_ri)**2/(N_DH/2 * Imax_unocc)
     
