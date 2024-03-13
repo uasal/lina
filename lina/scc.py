@@ -24,7 +24,6 @@ def estimate_coherent(sysi, scc_ref_image, r_npix, shift, sci_image=None, dark_m
     im_max = im.max()
     
     im_fft = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(im), norm='ortho'))
-    # im_fft_sum = xp.sum(xp.abs(im_fft))
     
     if plot:
         imshows.imshow2(xp.abs(im_fft), xp.angle(im_fft), lognorm1=True)
@@ -37,9 +36,6 @@ def estimate_coherent(sysi, scc_ref_image, r_npix, shift, sci_image=None, dark_m
     mask = r<r_npix
     im_fft_masked = mask*im_fft_shift
     
-    # im_fft_masked_sum = xp.sum(xp.abs(im_fft_masked))
-    # im_fft_masked *= xp.sqrt((im_fft_sum-im_fft_masked_sum)/im_fft_masked_sum)
-    
     if plot:
         imshows.imshow3(mask, xp.abs(im_fft_shift), xp.abs(im_fft_masked), lognorm2=True, lognorm3=True)
     
@@ -47,11 +43,8 @@ def estimate_coherent(sysi, scc_ref_image, r_npix, shift, sci_image=None, dark_m
 
     if dark_mask is not None:
         E_est *= dark_mask
-
-    # norm = (xp.abs(E_est) ** 2).max()
-    # E_est *= xp.sqrt(im_max / norm)
         
-    E_est /= xp.sqrt(xp.asarray(scc_ref_image))
+    E_est /= xp.sqrt(scc_ref_image)
 
     return E_est
 
