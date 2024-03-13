@@ -6,7 +6,8 @@ import copy
 
 from IPython.display import display, clear_output
 
-def estimate_coherent(sysi, scc_ref_image, r_npix, shift, sci_image=None, dark_mask=None, plot=False):
+def estimate_coherent(sysi, scc_ref_image, r_npix, shift, 
+                      sci_image=None, dark_mask=None, plot=False):
     '''
     r_npix:
         radius of sidebands in units of pixels
@@ -48,12 +49,46 @@ def estimate_coherent(sysi, scc_ref_image, r_npix, shift, sci_image=None, dark_m
 
     return E_est
 
-def estimate_incoherent():
+def estimate_incoherent(sysi, scc_ref_image, r_npix_c, 
+                        sci_image=None, dark_mask=None, plot=False, 
+                        **est_coherent_kwargs):
     '''
-    FIXME
+    r_npix_c:
+        radius of the central band in units of pixels
     '''
+    if sci_image is None:
+        im = sysi.snap()
+    else:
+        im = sci_image
     
-    return E_est
+    if dark_mask is not None:
+        im *= dark_mask
+        
+    estimate = estimate_coherent(sysi, sci_image = im, scc_ref_image = scc_ref_image, **est_coherent_kwargs)
+    
+    im_fft = xp.fft.fftshift(xp.fft.fft2(im, norm='ortho'))
+
+    x = xp.linspace(-im.shape[0]//2, im.shape[0]//2-1, im.shape[0]) + 1/2
+    x,y = xp.meshgrid(x,x)
+
+    r = xp.sqrt(x**2 + y**2)
+    mask = r<r_npix_c
+    im_fft_masked = mask*im_fft
+    
+    if plot:
+        imshows.imshow2(xp.abs(im_fft), xp.abs(im_fft_masked), lognorm1=True, lognorm2=True)
+    
+    I_messy = xp.real(xp.fft.ifft2(xp.fft.ifftshift(im_fft_masked), norm='ortho'))
+    
+    I_est = I_messy - scc_ref_image - ((np.abs(estimate) ** 2) ** 2) / scc_ref_image
+    
+    # How to take care of negative values?
+    I_est[I_est < 0] = 0
+
+    if dark_mask is not None:
+        I_est *= dark_mask
+        
+    return I_est
 
 def build_jacobian(sysi, 
                    epsilon, 
