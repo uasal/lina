@@ -125,6 +125,7 @@ def build_jacobian(sysi,
             mode = modes[i].reshape(sysi.Nact,sysi.Nact)
 
             sysi.add_dm(utils.ensure_np_array(amp.get() * mode))
+            command = sysi.get_dm()
             wavefront = estimate_coherent(sysi, dark_mask=None, **scc_kwargs) / xp.sqrt(imnorm)
             response += amp * wavefront.ravel() / (2*xp.var(amps))
             sysi.add_dm(utils.ensure_np_array(-amp.get() * mode))
@@ -133,7 +134,8 @@ def build_jacobian(sysi,
         responses[1::2,count] = response[control_mask.ravel()].imag
 
         if plot:
-            imshows.imshow1(xp.abs(response.reshape(256, 256)) ** 2, lognorm=True)
+            imshows.imshow2(xp.abs(response.reshape(sysi.npsf, sysi.npsf)) ** 2, 
+                            command * 1e9, lognorm1=True)
             time.sleep(2)
             clear_output(wait=True)
         
@@ -178,16 +180,17 @@ def run(sysi,
     # if hasattr(sysi, 'bad_acts'):
     #     dm_mask[sysi.bad_acts] = False
     
-    dm_ref = sysi.get_dm()
+    dm_ref = utils.ensure_np_array(sysi.get_dm())
     dm_command = utils.ensure_np_array(xp.zeros((sysi.Nact, sysi.Nact))) 
     efield_ri = xp.zeros(2*Nmask)
 
     for i in range(iterations+1):
         print('\tRunning iteration {:d}/{:d}.'.format(i, iterations), end="\r")
         sysi.set_dm(dm_ref + dm_command)
-        E_est = estimate_coherent(sysi, dark_mask=None, **scc_kwargs) / xp.sqrt(imnorm)
-        I_est = xp.abs(E_est)**2
         I_exact = sysi.snap() / imnorm
+        E_est = estimate_coherent(sysi, dark_mask=None, sci_image=I_exact * imnorm, 
+                                  **scc_kwargs) / xp.sqrt(imnorm)
+        I_est = xp.abs(E_est)**2
 
         # rms_est = xp.sqrt(xp.mean(I_est[control_mask]**2))
         # rms_im = xp.sqrt(xp.mean(I_exact[control_mask]**2))
