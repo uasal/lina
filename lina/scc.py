@@ -80,7 +80,7 @@ def estimate_incoherent(sysi, scc_ref_image, r_npix_c,
     
     I_messy = xp.real(xp.fft.ifft2(xp.fft.ifftshift(im_fft_masked), norm='ortho'))
     
-    I_est = I_messy - scc_ref_image - ((np.abs(estimate) ** 2) ** 2) / scc_ref_image
+    I_est = I_messy - scc_ref_image - ((xp.abs(estimate) ** 2) ** 2) / scc_ref_image
     
     # How to take care of negative values?
     I_est[I_est < 0] = 0
