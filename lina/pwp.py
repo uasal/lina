@@ -15,6 +15,7 @@ def run_pwp_bp(sysi,
                control_mask, 
                probes,
                use='J', jacobian=None, model=None, 
+               reg_cond=1e-3, 
                plot=False,
                plot_est=False):
     """ 
@@ -86,8 +87,6 @@ def run_pwp_bp(sysi,
             
         if plot:
             E_probe_2d = xp.zeros((sysi.npsf,sysi.npsf), dtype=xp.complex128)
-            # print(xp)
-            # print(type(E_probe_2d), type(dark_mask))
             xp.place(E_probe_2d, mask=control_mask, vals=E_probe)
             imshows.imshow2(xp.abs(E_probe_2d), xp.angle(E_probe_2d),
                             f'Probe {i+1}: '+'$|E_{probe}|$', f'Probe {i+1}: '+r'$\angle E_{probe}$')
@@ -102,7 +101,7 @@ def run_pwp_bp(sysi,
     for i in range(Nmask):
         delI = I_diff[:, i]
         M = 4*xp.array([E_probes[:,2*i], E_probes[:,2*i + 1]]).T
-        Minv = xp.linalg.pinv(M.T@M, 1e-2)@M.T
+        Minv = xp.linalg.pinv(M.T@M, reg_cond)@M.T
     
         est = Minv.dot(delI)
 

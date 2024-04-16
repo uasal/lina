@@ -121,9 +121,10 @@ def lstsq(modes, data):
     c, *_ = xp.linalg.lstsq(modes, data, rcond=None)
     return c
 
-def create_zernike_modes(pupil_mask, nmodes=15):
-    
-    zernikes = poppy.zernike.arbitrary_basis(pupil_mask, nterms=nmodes, outside=0)
+def create_zernike_modes(pupil_mask, nmodes=15, remove_modes=0):
+    if remove_modes>0:
+        nmodes += remove_modes
+    zernikes = poppy.zernike.arbitrary_basis(pupil_mask, nterms=nmodes, outside=0)[remove_modes:]
 
     return zernikes
 

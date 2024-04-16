@@ -195,7 +195,6 @@ def run(sysi,
         # image = xp.abs(electric_field)**2
         image = sysi.snap()
 
-        # efields.append([copy.copy(electric_field)])
         metric_images.append(copy.copy(image))
         fields.append(copy.copy(electric_field))
         dm_commands.append(sysi.get_dm())
