@@ -23,7 +23,9 @@ def estimate_coherent(mod_image, unmod_image, scc_ref_image, r_npix, shift,
     '''
     
     if dark_mask is not None:
-        im *= dark_mask
+        mod_image *= dark_mask
+        unmod_image *= dark_mask
+
     
     mod_fft = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(mod_image), norm='ortho'))
     unmod_fft = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(unmod_image), norm='ortho'))
