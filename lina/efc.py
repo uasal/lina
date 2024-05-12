@@ -165,6 +165,7 @@ def run(sysi,
     else:
         starting_iteration = len(old_images) - 1
 
+    efield_ri = xp.zeros(2*Nmask)
     for i in range(iterations):
         print(f'\tRunning iteration {i+1+starting_iteration}/{iterations+starting_iteration}.')
         
@@ -175,8 +176,6 @@ def run(sysi,
             print('Using model to compute electric field')
             electric_field = sysi.calc_wf() # no PWP, just use model
         
-        efield_ri = xp.zeros(2*Nmask)
-
         efield_ri[::2] = electric_field[control_mask].real
         efield_ri[1::2] = electric_field[control_mask].imag
 
@@ -188,7 +187,7 @@ def run(sysi,
         dm_command = act_commands.reshape(sysi.Nact,sysi.Nact)
 
         # Set the current DM state
-        sysi.add_dm(dm_command)
+        sysi.add_dm(dm_command/2)
         
         # Take an image to estimate the metrics
         # electric_field = sysi.calc_psf()

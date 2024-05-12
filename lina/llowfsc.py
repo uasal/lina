@@ -47,10 +47,12 @@ def calibrate(sysi,
     return response_matrix
 
 
-def run_model(sysi, ref_im, control_matrix, control_modes, time_series_coeff, zernike_modes,
-             lyot_stop=None, 
-             reverse_dm_parity=False,
-             plot=False):
+def run_model(sysi, static_wfe, ref_im, 
+              control_matrix, control_modes, 
+              time_series_coeff, zernike_modes,
+              control_mask, 
+              reverse_dm_parity=False,
+              plot=False):
     """_summary_
 
     Parameters
@@ -77,19 +79,16 @@ def run_model(sysi, ref_im, control_matrix, control_modes, time_series_coeff, ze
     z_modes = zernike_modes.reshape(Nz, sysi.npix**2).T
     print(c_modes.shape, z_modes.shape)
 
-    if lyot_stop is None:
-        lyot_diam = 8.6*u.mm # dont make this hardcoded
-        lyot_stop = poppy.CircularAperture(name='Lyot Stop', radius=lyot_diam/2.0)
-        wfs_lyot_stop = poppy.InverseTransmission(lyot_stop)
+    static_opd = xp.angle(static_wfe) * sysi.wavelength_c.to_value(u.m)/(2*np.pi)
 
     prev_wfe = xp.zeros((sysi.npix, sysi.npix))
     for i in range(Nitr):
-        print(1)
         new_wfe = z_modes.dot(time_series_coeff[:,i]).reshape(sysi.npix,sysi.npix)
-        print(new_wfe.shape, prev_wfe.shape)
-        wfe_diff = new_wfe - prev_wfe
-        sysi.WFE.opd = utils.pad_or_crop(copy.copy(new_wfe), sysi.N)
-        
+        sysi.WFE = static_wfe * xp.exp(1j*2*np.pi*new_wfe / sysi.wavelength_c.to_value(u.m))
+        # wfe_diff = new_wfe - prev_wfe
+        # sysi.WFE.opd = utils.pad_or_crop(copy.copy(new_wfe), sysi.N)
+
+        sysi.use_llowfsc()
         image = sysi.snap()
         del_im = image - ref_im
         
@@ -99,47 +98,39 @@ def run_model(sysi, ref_im, control_matrix, control_modes, time_series_coeff, ze
             del_dm_command = xp.rot90(xp.rot90(del_dm_command))
         sysi.add_dm(del_dm_command/2)
         
-        est_abs = xp.rot90(xp.rot90(z_modes.dot(modal_coeff).reshape(sysi.npix,sysi.npix)))
-        est_residuals = new_wfe - est_abs
+        est_opd = xp.rot90(xp.rot90(z_modes.dot(modal_coeff).reshape(sysi.npix,sysi.npix)))
+        est_residuals = new_wfe - est_opd
 
-        sysi.return_pupil = True
-        pupil_wf = sysi.calc_wf()
-        sysi.return_pupil = False
-        actual_abs = xp.angle(pupil_wf)*sysi.wavelength.to_value(u.m)/(2*np.pi)
-        actual_abs = sysi.pupil_mask * utils.pad_or_crop(actual_abs, sysi.npix)
-
-        sysi.use_llowfsc = False
-        sysi.LYOT = lyot_stop
+        sysi.use_llowfsc(False)
         coro_im = sysi.snap()
-        sysi.use_llowfsc = True
-        sysi.LYOT = wfs_lyot_stop
 
         if plot:
-            rms_wfe = xp.sqrt(xp.mean(xp.square(new_wfe[sysi.pupil_mask])))
-            rms_est_wfe = xp.sqrt(xp.mean(xp.square(est_abs[sysi.pupil_mask])))
-            rms_residual = xp.sqrt(xp.mean(xp.square(est_residuals[sysi.pupil_mask])))
-            imshows.imshow3(new_wfe, est_abs, actual_abs,  
+            rms_wfe = xp.sqrt(xp.mean(xp.square(new_wfe[sysi.APMASK])))
+            rms_est_wfe = xp.sqrt(xp.mean(xp.square(est_opd[sysi.APMASK])))
+            rms_residual = xp.sqrt(xp.mean(xp.square(est_residuals[sysi.APMASK])))
+            imshows.imshow3(new_wfe, est_opd, del_im, 
                             f'Current WFE: {rms_wfe:.2e}', 
                             f'Estimated WFE: {rms_est_wfe:.2e}',
-                            f'Estimated Residual WFE: {rms_residual:.2e}',
-                            npix1=sysi.npix, npix2=sysi.npix, npix3=sysi.npix,
-                            vmin1=-20e-9, vmax1=20e-9, vmin2=-20e-9, vmax2=20e-9, vmin3=-20e-9, vmax3=20e-9)
+                            'Measured Difference Image', 
+                            npix1=sysi.npix, npix2=sysi.npix, 
+                            vmin1=-20e-9, vmax1=20e-9, 
+                            vmin2=-20e-9, vmax2=20e-9, 
+                            cmap1='cividis', cmap2='cividis',
+                            )
             
             dm_command = sysi.get_dm()
             pv_stroke = xp.max(dm_command) - xp.min(dm_command)
             rms_stroke = xp.sqrt(xp.mean(xp.square(dm_command[sysi.dm_mask])))
-            imshows.imshow3(del_im, del_dm_command, coro_im, 
-                            'Measured LLOWFSC Image (Difference)', 
-                            f'Computed DM Correction:\nPV Stroke = {pv_stroke:.2e}\nRMS Stroke = {rms_stroke:.2e}', 
-                            'Coronagraphic Image',
-                            cmap2='viridis', 
-                            lognorm3=True, vmin3=1e-11, 
+            mean_contrast = xp.mean(coro_im[control_mask])
+            imshows.imshow3(del_dm_command, dm_command, coro_im, 
+                            'Computed DM Correction',
+                            f'PV Stroke = {1e9*pv_stroke:.1f}nm\nRMS Stroke = {1e9*rms_stroke:.1f}nm', 
+                            f'Coronagraphic Image:\nMean Contrast = {mean_contrast:.2e}', 
+                            cmap1='viridis', cmap2='viridis', cmap3='magma', 
+                            lognorm3=True, vmin3=1e-11, pxscl3=sysi.psf_pixelscale_lamD, 
                             )
-            # imshows.imshow2(est_abs, actual_abs,
-            #                 'Estimated WFE', 'True WFE (from model)',
-            #                 vmin2=-20e-9, vmax2=20e-9)
-
-        prev_wfe = copy.copy(utils.pad_or_crop(sysi.WFE.opd, sysi.npix))
+            
+        prev_wfe = xp.angle(sysi.WFE) * sysi.wavelength_c.to_value(u.m) / (2*np.pi)
 
 
 def run(sysi, ref_im, control_matrix, control_modes, time_series_coeff, zernike_modes,

@@ -93,7 +93,6 @@ def generate_wfe(diam,
     wfe_opd *= opd_rms.to_value(u.m)/wfe_rms
 
     wfe_amp = wfe_amp*1e9 + 1
-    print(xp.mean(wfe_amp[mask]))
 
     wfe_amp_rms = xp.sqrt(xp.mean(xp.square(wfe_amp[mask]-1)))
     wfe_amp *= amp_rms/wfe_amp_rms
@@ -193,7 +192,7 @@ def create_annular_focal_plane_mask(sysi,
     if edge is not None: mask *= (x > edge)
     
     mask = _scipy.ndimage.rotate(mask, rotation, reshape=False, order=0)
-    mask = _scipy.ndimage.shift(mask, (shift[1], shift[0]), order=0)
+    # mask = _scipy.ndimage.shift(mask, (shift[1], shift[0]), order=0)
     
     if plot:
         imshows.imshow1(mask)
