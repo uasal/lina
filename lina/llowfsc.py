@@ -184,7 +184,6 @@ def run(sysi, ref_im, control_matrix, control_modes, time_series_coeff, zernike_
         
         est_abs = xp.rot90(xp.rot90(z_modes.dot(modal_coeff).reshape(sysi.npix,sysi.npix)))
 
-
         coro_im = sysi.snap()
 
         if plot:

@@ -68,3 +68,72 @@ def estimate_incoherent():
     '''
     
     return E_est
+
+
+def estimate_coherent_mod(sysi, 
+                        #   mod_image, unmod_image, scc_ref_image, 
+                          r_npix, shift, 
+                          dark_mask=None, 
+                          plot=False,):
+    '''
+    mod_image:
+        SCC modulated science image taken using an SCC stop 
+    unmod_image:
+        Unmodulated science image taken using a standard Lyot stop
+    scc_ref_image:
+        Reference image taken using just the SCC's pinhole for normalization of the estimated electric field
+    r_npix:
+        Radius of sidebands in units of pixels
+    shift:
+        Location of sideband centers in pixels (from center of array)
+    dark_mask:
+        Dark hole mask (optional)
+    '''
+
+    sysi.use_scc()
+    mod_image = sysi.snap()
+
+    sysi.use_scc(False)
+    unmod_image = sysi.snap()
+
+    sysi.block_lyot()
+    scc_ref_image = sysi.snap()
+    sysi.block_lyot(False)
+    
+    if dark_mask is not None:
+        mod_image *= dark_mask
+        unmod_image *= dark_mask
+        mask_fft = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(dark_mask), norm='ortho'))
+
+    mod_fft = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(mod_image), norm='ortho'))
+    unmod_fft = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(unmod_image), norm='ortho'))
+
+    fft_diff = mod_fft - unmod_fft
+    # if dark_mask is not None:
+    #     fft_diff -= mask_fft
+
+    if plot:
+        imshows.imshow3(xp.abs(mod_fft), xp.abs(unmod_fft), xp.abs(fft_diff), lognorm=True, )
+
+    fft_shifted = _scipy.ndimage.shift(fft_diff, shift)
+    
+    x = xp.linspace(-mod_image.shape[0]//2, mod_image.shape[0]//2-1, mod_image.shape[0]) + 1/2
+    x,y = xp.meshgrid(x,x)
+    
+    r = xp.sqrt(x ** 2 + y ** 2)
+    mask = r < r_npix
+    fft_masked = mask * fft_shifted
+    
+    if plot:
+        imshows.imshow2(xp.abs(fft_shifted) ** 2, xp.abs(fft_masked) ** 2, lognorm=True)
+    
+    E_est = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(fft_masked), norm='ortho'))
+
+    if dark_mask is not None:
+        E_est *= dark_mask
+        
+    E_est /= xp.sqrt(scc_ref_image)
+
+    return E_est
+
+
