@@ -34,31 +34,29 @@ def calibrate(sysi,
 
     start = time.time()
     
-    amps = np.linspace(-calibration_amp, calibration_amp, 2) # for generating a negative and positive actuator poke
-    
     Nmodes = calibration_modes.shape[0]
     Nmask = int(control_mask.sum())
     
-    responses = xp.zeros((2*Nmask, Nmodes))
+    response_matrix = xp.zeros((2*Nmask, Nmodes), dtype=xp.float64)
     print('Calculating Jacobian: ')
-    for i,mode in enumerate(calibration_modes):
+    for i,dm_mode in enumerate(calibration_modes):
         response = 0
-        for amp in amps:
-            mode = mode.reshape(sysi.Nact,sysi.Nact)
+        for s in [-1, 1]:
+            # Add the mode to the DMs
+            sysi.add_dm(s * calibration_amp * dm_mode.reshape(sysi.Nact,sysi.Nact))
+            
+            # Compute reponse with difference images of probes
+            if scc_fun is None:
+                efield = sysi.calc_wf()
+            else:
+                efield = scc_fun(sysi, **scc_params)
+            response += s * efield / (2 * calibration_amp)
+            
+            # Remove the mode form the DMs
+            sysi.add_dm(-s * calibration_amp * dm_mode.reshape(sysi.Nact,sysi.Nact))
 
-            if scc_fun is None: # using the model to build the Jacobian
-                sysi.add_dm(amp*mode)
-                wavefront = sysi.calc_wf()
-                response += amp * wavefront.flatten() / (2*np.var(amps))
-                sysi.add_dm(-amp*mode)
-            elif scc_fun is not None and scc_params is not None:
-                sysi.add_dm(amp*mode)
-                wavefront = scc_fun(sysi, **scc_params)
-                response += amp * wavefront.flatten() / (2*np.var(amps))
-                sysi.add_dm(-amp*mode)
-
-        responses[::2,i] = response[control_mask.ravel()].real
-        responses[1::2,i] = response[control_mask.ravel()].imag
+        response_matrix[::2,i] = response[control_mask].real
+        response_matrix[1::2,i] = response[control_mask].imag
 
         print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(i+1, Nmodes, time.time()-start), end='')
         print("\r", end="")
@@ -67,12 +65,12 @@ def calibrate(sysi,
     print('Jacobian built in {:.3f} sec'.format(time.time()-start))
     
     if plot:
-        total_response = responses[::2] + 1j*responses[1::2]
+        total_response = response_matrix[::2] + 1j*response_matrix[1::2]
         dm_response = total_response.dot(xp.array(calibration_modes))
         dm_response = xp.sqrt(xp.mean(xp.abs(dm_response)**2, axis=0)).reshape(sysi.Nact, sysi.Nact)
         imshows.imshow1(dm_response, lognorm=True, vmin=dm_response.max()*1e-2)
 
-    return responses
+    return response_matrix
 
 def run(sysi, 
         calibration_modes,
@@ -160,11 +158,9 @@ def run(sysi,
     command = 0.0
     dm_command = 0.0
 
-    if old_images is None:
-        starting_iteration = 0
-    else:
-        starting_iteration = len(old_images) - 1
+    starting_iteration = 0 if old_images is None else len(old_images) - 1
 
+    dm_ref = sysi.get_dm()
     efield_ri = xp.zeros(2*Nmask)
     for i in range(iterations):
         print(f'\tRunning iteration {i+1+starting_iteration}/{iterations+starting_iteration}.')
@@ -187,11 +183,8 @@ def run(sysi,
         dm_command = act_commands.reshape(sysi.Nact,sysi.Nact)
 
         # Set the current DM state
-        sysi.add_dm(dm_command/2)
+        sysi.set_dm(dm_ref + xp.array(dm_command))
         
-        # Take an image to estimate the metrics
-        # electric_field = sysi.calc_psf()
-        # image = xp.abs(electric_field)**2
         image = sysi.snap()
 
         metric_images.append(copy.copy(image))

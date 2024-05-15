@@ -74,7 +74,9 @@ def estimate_coherent_mod(sysi,
                         #   mod_image, unmod_image, scc_ref_image, 
                           r_npix, shift, 
                           dark_mask=None, 
-                          plot=False,):
+                          plot=False,
+                          plot_est=False,
+                          ):
     '''
     mod_image:
         SCC modulated science image taken using an SCC stop 
@@ -133,6 +135,11 @@ def estimate_coherent_mod(sysi,
         E_est *= dark_mask
         
     E_est /= xp.sqrt(scc_ref_image)
+
+    if plot or plot_est:
+        imshows.imshow2(xp.abs(E_est)**2, xp.angle(E_est), 'Estimated Intensity', 'Estimated Phase',
+                        lognorm1=True, pxscl=sysi.psf_pixelscale_lamD,
+                        cmap1='magma', cmap2='twilight',)
 
     return E_est
 
