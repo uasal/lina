@@ -73,6 +73,7 @@ def estimate_incoherent():
 def estimate_coherent_mod(sysi, 
                         #   mod_image, unmod_image, scc_ref_image, 
                           r_npix, shift, 
+                          scc_ref_image=None, 
                           dark_mask=None, 
                           plot=False,
                           plot_est=False,
@@ -98,14 +99,22 @@ def estimate_coherent_mod(sysi,
     sysi.use_scc(False)
     unmod_image = sysi.snap()
 
-    sysi.block_lyot()
-    scc_ref_image = sysi.snap()
-    sysi.block_lyot(False)
+    if scc_ref_image is None: 
+        sysi.block_lyot()
+        scc_ref_image = sysi.snap()
+        sysi.block_lyot(False)
+
+    if plot:
+        diff = mod_image - unmod_image
+        imshows.imshow3(mod_image, unmod_image, diff, 
+                        'Modulated Image', 'Unmodulated Image',
+                        pxscl=sysi.psf_pixelscale_lamD, 
+                        lognorm1=True, lognorm2=True)
     
     if dark_mask is not None:
         mod_image *= dark_mask
         unmod_image *= dark_mask
-        mask_fft = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(dark_mask), norm='ortho'))
+        # mask_fft = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(dark_mask), norm='ortho'))
 
     mod_fft = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(mod_image), norm='ortho'))
     unmod_fft = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(unmod_image), norm='ortho'))

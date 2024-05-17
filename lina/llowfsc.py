@@ -49,9 +49,12 @@ def calibrate(sysi,
 
 def run_model(sysi, static_wfe, ref_im, 
               control_matrix, control_modes, 
-              time_series_coeff, zernike_modes,
-              control_mask, 
+              time_series,
+              zernike_modes,
+              control_mask,
+              gain_vector=None,  
               reverse_dm_parity=False,
+              return_all=True, 
               plot=False):
     """_summary_
 
@@ -72,27 +75,34 @@ def run_model(sysi, static_wfe, ref_im,
     plot : bool, optional
         _description_, by default False
     """
-    Nitr = time_series_coeff.shape[1]
+    print(f'Starting LLOWFSC control-loop simulation: delta T = {time_series[0][1]-time_series[0][0]:.4e}s')
+
+    Nitr = time_series.shape[1]
     Nc = control_modes.shape[0]
     Nz = zernike_modes.shape[0]
     c_modes = control_modes.reshape(Nc, sysi.Nact**2).T
     z_modes = zernike_modes.reshape(Nz, sysi.npix**2).T
-    print(c_modes.shape, z_modes.shape)
+    # print(c_modes.shape, z_modes.shape)
 
-    static_opd = xp.angle(static_wfe) * sysi.wavelength_c.to_value(u.m)/(2*np.pi)
+    # prior to the first iteration, compute the initial image the first DM commands will be computed from
+    new_wfe = z_modes.dot(time_series[1:,0]).reshape(sysi.npix,sysi.npix)
+    sysi.WFE = static_wfe * xp.exp(1j*2*np.pi*new_wfe / sysi.wavelength_c.to_value(u.m))
 
-    prev_wfe = xp.zeros((sysi.npix, sysi.npix))
-    for i in range(Nitr):
-        new_wfe = z_modes.dot(time_series_coeff[:,i]).reshape(sysi.npix,sysi.npix)
+    sysi.use_llowfsc()
+    image = sysi.snap()
+    del_im = image - ref_im
+
+    if return_all:
+        coro_ims = xp.zeros((Nitr-1, sysi.npsf, sysi.npsf))
+        llowfsc_ims = xp.zeros((Nitr-1, sysi.nllowfsc, sysi.nllowfsc))
+
+    for i in range(Nitr-1):
+        # apply the new wavefront for the current iteration
+        new_wfe = z_modes.dot(time_series[1:,i+1]).reshape(sysi.npix,sysi.npix)
         sysi.WFE = static_wfe * xp.exp(1j*2*np.pi*new_wfe / sysi.wavelength_c.to_value(u.m))
-        # wfe_diff = new_wfe - prev_wfe
-        # sysi.WFE.opd = utils.pad_or_crop(copy.copy(new_wfe), sysi.N)
 
-        sysi.use_llowfsc()
-        image = sysi.snap()
-        del_im = image - ref_im
-        
-        modal_coeff = 2*control_matrix.dot(del_im.flatten())
+        # compute the DM command with the image based on the time delayed wavefront
+        modal_coeff = control_matrix.dot(del_im.flatten())
         del_dm_command = -c_modes.dot(modal_coeff).reshape(sysi.Nact,sysi.Nact)
         if reverse_dm_parity:
             del_dm_command = xp.rot90(xp.rot90(del_dm_command))
@@ -100,16 +110,26 @@ def run_model(sysi, static_wfe, ref_im,
         
         est_opd = xp.rot90(xp.rot90(z_modes.dot(modal_coeff).reshape(sysi.npix,sysi.npix)))
         est_residuals = new_wfe - est_opd
-
+    
+        # compute the coronagraphic image after applying the time delayed correction
         sysi.use_llowfsc(False)
         coro_im = sysi.snap()
+
+        # compute the new LLOWFSC image to be used on the next iteration
+        sysi.use_llowfsc()
+        image = sysi.snap()
+        del_im = image - ref_im
+
+        if return_all:
+            llowfsc_ims[i] = copy.copy(image)
+            coro_ims[i] = copy.copy(coro_im)
 
         if plot:
             rms_wfe = xp.sqrt(xp.mean(xp.square(new_wfe[sysi.APMASK])))
             rms_est_wfe = xp.sqrt(xp.mean(xp.square(est_opd[sysi.APMASK])))
             rms_residual = xp.sqrt(xp.mean(xp.square(est_residuals[sysi.APMASK])))
             imshows.imshow3(new_wfe, est_opd, del_im, 
-                            f'Current WFE: {rms_wfe:.2e}', 
+                            f'Current WFE: {rms_wfe:.2e}\nTime = {time_series[0][i+1]:.3f}s', 
                             f'Estimated WFE: {rms_est_wfe:.2e}',
                             'Measured Difference Image', 
                             npix1=sysi.npix, npix2=sysi.npix, 
@@ -129,8 +149,8 @@ def run_model(sysi, static_wfe, ref_im,
                             cmap1='viridis', cmap2='viridis', cmap3='magma', 
                             lognorm3=True, vmin3=1e-11, pxscl3=sysi.psf_pixelscale_lamD, 
                             )
-            
-        prev_wfe = xp.angle(sysi.WFE) * sysi.wavelength_c.to_value(u.m) / (2*np.pi)
+    if return_all:
+        return coro_ims, llowfsc_ims
 
 
 def run(sysi, ref_im, control_matrix, control_modes, time_series_coeff, zernike_modes,
