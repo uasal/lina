@@ -16,17 +16,17 @@ def take_measurement(sysi, probe_cube, probe_amplitude, return_all=False, pca_mo
     Parameters
     ----------
     sysi : object
-        The object of a system interface with methods for DM control and image 
+        The object of a system interface with methods for DM control and image capture
     probe_cube : xp.ndarray
         3D array of probes to measure difference images of, shape of (Nprobes, Nact, Nact)
     probe_amplitude : _type_
-        _description_
+        what amplitude to apply to the probe commands
     return_all : bool, optional
         _description_, by default False
     pca_modes : _type_, optional
         _description_, by default None
     plot : bool, optional
-        _description_, by default False
+        whether to plot the probes and the measured difference images, by default False
 
     Returns
     -------
@@ -74,13 +74,44 @@ def calibrate(sysi,
               calibration_amplitude, calibration_modes, 
               start_mode=0,
               return_all=False, 
-             plot_sum=False):
+             plot=False):
+    """
+    This function will compute the Jacobian/response matrix for iEFC
+
+    Parameters
+    ----------
+    sysi : object
+        the wrapper for the model or testbed interface
+    control_mask : xp.ndarray
+        2D boolean array of the mask defining the control region
+    probe_amplitude : float
+        the amplitude (in meters) to be applied to the probes
+    probe_modes : xp.ndarray
+        3D array of the probes that to measure the difference images of
+    calibration_amplitude : float
+        the amplitude (in meters) to be applied to the calibration modes
+    calibration_modes : xp.ndarray
+        the modes that were calibrated in the Jacobian
+    start_mode : int, optional
+        _description_, by default 0
+    return_all : bool, optional
+        whether to return the entire array of difference images or just the final response matrix, 
+        by default False
+    plot : bool, optional
+        whether to plot the response of the RMS response of the actuators,
+        by default False
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     print('Calibrating iEFC...')
     Nmodes = calibration_modes.shape[0]
     
-    response_cube = []
+    response_matrix = []
     if return_all:
-        response_matrix = []
+        response_cube = []
     # Loop through all modes that you want to control
     start = time.time()
     for ci, calibration_mode in enumerate(calibration_modes[start_mode::]):
@@ -99,7 +130,6 @@ def calibrate(sysi,
         for i in range(probe_modes.shape[0]):
             measured_response.append(response[i, control_mask.ravel()])
         measured_response = xp.array(measured_response)
-#         print(measured_response.shape)
         response_matrix.append(xp.concatenate(measured_response)) # masked response for each probe mode 
         if return_all:
             response_cube.append(response)
@@ -110,7 +140,7 @@ def calibrate(sysi,
     if return_all:
         response_cube = xp.array(response_cube)
     
-    if plot_sum:
+    if plot:
         dm_rss = xp.sqrt(xp.sum(abs(response_matrix.dot(xp.array(calibration_modes)))**2, axis=0)).reshape(sysi.Nact,sysi.Nact)
         imshows.imshow1(dm_rss, 'DM RSS Response')
         if return_all:
@@ -145,13 +175,50 @@ def run(sysi,
         leakage=0.0,
         plot_current=True,
         plot_all=False,
-        plot_radial_contrast=True,
+        plot_radial_contrast=False,
         old_images=None,
         old_dm_commands=None,):
-    print('Running iEFC...')
+    """
+    This algorithm runs iEFC using the control matrix that is supplied
+
+    Parameters
+    ----------
+    sysi : object
+        the wrapper for the model or testbed interface
+    control_matrix : xp.ndarray
+        the inverted Jacobian for iEFC used to compute modal coefficients
+    probe_modes : xp.ndarray
+        3D array of the probes that were used to generate the Jacobian
+    probe_amplitude : float
+        the amplitude (in meters) to be applied to the probes
+    calibration_modes : xp.ndarray
+        the modes that were calibrated in the Jacobian
+    control_mask : xp.ndarray
+        2D boolean array of the mask defining the control region
+    num_iterations : int, optional
+        how many iterations to run iEFC for, by default 10
+    loop_gain : float, optional
+        _description_, by default 0.5
+    leakage : float, optional
+        _description_, by default 0.0
+    plot_current : bool, optional
+        _description_, by default True
+    plot_all : bool, optional
+        _description_, by default False
+    plot_radial_contrast : bool, optional
+        _description_, by default True
+    old_images : _type_, optional
+        previous images taken, this array will be appeneded with the new images from this run, 
+        by default None
+    old_dm_commands : _type_, optional
+        previous DM commands computed, this array will be appended with the new DM commands computed, 
+        by default None
+    """
+
+    print('Running iEFC ...')
     start = time.time()
     
-    dm_commands = np.zeros((num_iterations, sysi.Nact, sysi.Nact), dtype=np.float64)
+    dm_commands = xp.zeros((num_iterations, sysi.Nact, sysi.Nact), dtype=np.float64)
     metric_images = xp.zeros((num_iterations, sysi.npsf, sysi.npsf), dtype=xp.float64)
     
     dm_ref = sysi.get_dm()
@@ -159,12 +226,15 @@ def run(sysi,
     for i in range(num_iterations):
         print(f"\tClosed-loop iteration {i+1} / {num_iterations}")
         
-        delta_coefficients = single_iteration(sysi, probe_modes, probe_amplitude, control_matrix, control_mask)
+        # delta_coefficients = single_iteration(sysi, probe_modes, probe_amplitude, control_matrix, control_mask)
+        diff_images = take_measurement(sysi, probe_modes, probe_amplitude)
+        measurement_vector = diff_images[:, control_mask.ravel()].ravel()
+        delta_coefficients = control_matrix.dot( measurement_vector )
         modal_coeff = (1.0-leakage)*modal_coeff + loop_gain*delta_coefficients
-        
+        # print(type(calibration_modes), type(modal_coeff))
         # Reconstruct the full phase from the Fourier modes
-        dm_command = -calibration_modes.T.dot(ensure_np_array(modal_coeff)).reshape(sysi.Nact,sysi.Nact)
-        sysi.set_dm(dm_ref + dm_command)
+        dm_command = -calibration_modes.T.dot(modal_coeff).reshape(sysi.Nact,sysi.Nact)
+        sysi.add_dm(dm_command)
         
         # Take an image to estimate the metrics
         image = sysi.snap()
@@ -178,13 +248,13 @@ def run(sysi,
         if plot_current: 
             if not plot_all: clear_output(wait=True)
             imshows.imshow3(dm_commands[i], image, image*control_mask,
-                            'DM Command', f'Image: Iteration {i}',
+                            'DM Command', f'Image: Iteration {i+1}',
                             pxscl2=sysi.psf_pixelscale_lamD, pxscl3=sysi.psf_pixelscale_lamD, 
                             lognorm2=True, lognorm3=True
 #                             vmin2=1e-11,
                            )
             if plot_radial_contrast:
-                utils.plot_radial_contrast(image, control_mask, sysi.psf_pixelscale_lamD, nbins=100)
+                utils.plot_radial_contrast(image, control_mask, sysi.psf_pixelscale_lamD, nbins=50)
                 
     if old_images is not None:
         metric_images = xp.concatenate([old_images, metric_images], axis=0)
