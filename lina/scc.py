@@ -93,16 +93,26 @@ def estimate_coherent_mod(sysi,
         Dark hole mask (optional)
     '''
 
-    sysi.use_scc()
+    # sysi.use_scc()
+    # mod_image = sysi.snap()
+
+    # sysi.use_scc(False)
+    # unmod_image = sysi.snap()
+
+    # if scc_ref_image is None: 
+        # sysi.block_lyot()
+        # scc_ref_image = sysi.snap()
+        # sysi.block_lyot(False)
+    
+    input('Press "Enter" when ready to aquire the MODULATED SCC image.')
     mod_image = sysi.snap()
 
-    sysi.use_scc(False)
+    input('Press "Enter" when ready to aquire the UNMODULATED SCC image.')
     unmod_image = sysi.snap()
 
     if scc_ref_image is None: 
-        sysi.block_lyot()
+        input('Press "Enter" when ready to aquire the SCC reference image.')
         scc_ref_image = sysi.snap()
-        sysi.block_lyot(False)
 
     if plot:
         diff = mod_image - unmod_image

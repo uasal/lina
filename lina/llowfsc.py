@@ -153,6 +153,95 @@ def run_model(sysi, static_wfe, ref_im,
         return coro_ims, llowfsc_ims
 
 
+def run_bb_model(sysi,
+                 static_wfe, 
+                 ref_im, 
+                 control_matrix, 
+                 control_modes, 
+                 wfe_time_series,
+                 wfe_modes,
+                 gain=1/2,  
+                 thresh=0,
+                 reverse_dm_parity=False,
+                 return_all=True, 
+                 plot=False,
+                 plot_all=False):
+    print(f'Starting LLOWFSC control-loop simulation: delta T = {wfe_time_series[0][1]-wfe_time_series[0][0]:.4e}s')
+
+    Nitr = wfe_time_series.shape[1]
+    control_modes = xp.moveaxis(control_modes, 0, -1)
+    wfe_modes = xp.moveaxis(wfe_modes, 0, -1)
+
+    llowfsc_ims = xp.zeros((Nitr-1, sysi.nllowfsc, sysi.nllowfsc))
+    llowfsc_commands = xp.zeros((Nitr-1, sysi.Nact, sysi.Nact))
+
+    # Prior to the first iteration, compute the initial image the first DM commands will be computed from
+    new_wfe = wfe_modes.dot(wfe_time_series[1:,0]).reshape(sysi.npix,sysi.npix)
+    sysi.WFE = static_wfe * xp.exp(1j*2*np.pi*new_wfe / sysi.wavelength_c.to_value(u.m))
+
+    image = sysi.snap()
+    del_im = image - ref_im
+
+    est_wfe = 0.0
+    total_coeff = 0.0
+    for i in range(Nitr-1):
+        # apply the new wavefront for the current iteration
+        new_wfe = wfe_modes.dot(wfe_time_series[1:,i+1]).reshape(sysi.npix,sysi.npix)
+        total_wfe = static_wfe * xp.exp(1j*2*np.pi*new_wfe / sysi.wavelength_c.to_value(u.m))
+        sysi.set_actor_attr('WFE', total_wfe)
+
+        # compute the DM command with the image based on the time delayed wavefront
+        modal_coeff = control_matrix.dot(del_im.flatten())
+        modal_coeff *= xp.abs(modal_coeff) >= thresh
+        modal_coeff *= gain
+        del_dm_command = -control_modes.dot(modal_coeff).reshape(sysi.Nact,sysi.Nact)
+        if reverse_dm_parity: del_dm_command = xp.rot90(xp.rot90(del_dm_command))
+        sysi.add_dm(del_dm_command)
+
+        # est_wfe += wfe_modes.dot(modal_coeff)
+        total_coeff += modal_coeff
+        total_est_wfe = 2*wfe_modes.dot(total_coeff).reshape(sysi.npix,sysi.npix)
+
+        # compute the new LLOWFSC image to be used on the next iteration
+        image = sysi.snap()
+        del_im = image - ref_im
+
+        llowfsc_ims[i] = copy.copy(image)
+        llowfsc_commands[i] = copy.copy(sysi.get_dm())
+
+        if plot:
+            diff = new_wfe - total_est_wfe
+            rms_wfe = xp.sqrt(xp.mean(xp.square(new_wfe[sysi.getattr('APMASK')])))
+            # rms_est_wfe = xp.sqrt(xp.mean(xp.square(est_wfe[sysi.getattr('APMASK')])))
+            rms_est_wfe = xp.sqrt(xp.mean(xp.square(total_est_wfe[sysi.getattr('APMASK')])))
+            rms_diff = xp.sqrt(xp.mean(xp.square(diff[sysi.getattr('APMASK')])))
+            imshows.imshow3(new_wfe, total_est_wfe, new_wfe - total_est_wfe, 
+                            f'Time = {wfe_time_series[0][i+1]:.3f}s\nCurrent WFE: {rms_wfe:.2e}', 
+                            f'Estimated WFE: {rms_est_wfe:.2e}',
+                            f'Difference: {rms_diff:.2e}', 
+                            npix1=sysi.npix, npix3=sysi.npix, 
+                            vmin1=-1.5*rms_wfe, vmax1=1.5*rms_wfe, 
+                            vmin2=-1.5*rms_wfe, vmax2=1.5*rms_wfe, 
+                            vmin3=-1.5*rms_wfe, vmax3=1.5*rms_wfe, 
+                            cmap1='cividis', cmap2='cividis', cmap3='cividis',
+                            )
+            
+            dm_command = sysi.get_dm()
+            pv_stroke = xp.max(dm_command) - xp.min(dm_command)
+            rms_stroke = xp.sqrt(xp.mean(xp.square(dm_command[sysi.dm_mask])))
+            imshows.imshow3(del_im, del_dm_command, dm_command, 
+                            'Measured Difference Image', 
+                            'Computed DM Correction',
+                            f'PV Stroke = {1e9*pv_stroke:.1f}nm\nRMS Stroke = {1e9*rms_stroke:.1f}nm', 
+                            cmap1='magma', cmap2='viridis', cmap3='viridis',
+                            )
+            
+            if not plot_all:
+                clear_output(wait=True)
+            
+    return llowfsc_ims, llowfsc_commands
+
+
 def run(sysi, ref_im, control_matrix, control_modes, time_series_coeff, zernike_modes,
              lyot_stop=None, 
              reverse_dm_parity=False,

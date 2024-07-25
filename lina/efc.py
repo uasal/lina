@@ -177,13 +177,11 @@ def run(sysi,
 
         modal_coefficients = -control_matrix.dot(efield_ri)
         command = (1.0-leakage)*command + loop_gain*modal_coefficients
-        
-        # Reconstruct the full phase from the Fourier modes
         act_commands = calibration_modes.T.dot(command)
         dm_command = act_commands.reshape(sysi.Nact,sysi.Nact)
 
         # Set the current DM state
-        sysi.set_dm(dm_ref + xp.array(dm_command))
+        sysi.set_dm(dm_ref + dm_command)
         
         image = sysi.snap()
 

@@ -178,7 +178,7 @@ def imshow3(arr1, arr2, arr3,
     npix1, npix2, npix3 = (npix, npix, npix) if npix is not None else (npix1, npix2, npix3)
     if npix1 is not None: arr1 = utils.pad_or_crop(arr1, npix1)
     if npix2 is not None: arr2 = utils.pad_or_crop(arr2, npix2)
-    if npix3 is not None: arr2 = utils.pad_or_crop(arr3, npix3)
+    if npix3 is not None: arr3 = utils.pad_or_crop(arr3, npix3)
 
     arr1 = ensure_np_array(arr1)
     arr2 = ensure_np_array(arr2)

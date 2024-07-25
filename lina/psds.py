@@ -31,7 +31,10 @@ def generate_freqs(Nf=2**18+1,
         raise ValueError('Must supply number of samples to be a power of 2 plus 1. ')
     del_f = (f_max - f_min)/Nf
     freqs = np.arange(f_min.value, f_max.value, del_f.value) * u.Hz
-    return freqs, del_f
+    Nt = 2*(Nf-1)
+    del_t = (1/(2*f_max)).to(u.s)
+    times = np.linspace(0, (Nt-1)*del_t, Nt)
+    return freqs, del_f, times
 
 
 def kneePSD(freqs,beta,fn,alpha):
@@ -53,7 +56,7 @@ def generate_time_series(psd, f_max, rms=None,  seed=123,):
 
     N_P = len(P_fft_one_sided)  # Length of PSD
     N = 2*(N_P - 1)
-    print(N_P, N)
+    # print(N_P, N)
 
     # Because P includes both DC and Nyquist (N/2+1), P_fft must have 2*(N_P-1) elements
     P_fft_one_sided[0] = P_fft_one_sided[0] * 2
@@ -78,9 +81,9 @@ def generate_time_series(psd, f_max, rms=None,  seed=123,):
 
     if rms is not None: 
         x_new *= rms/np.sqrt(np.mean(np.square(x_new)))
-    print(np.sqrt(np.sum(np.square(x_new.real))), np.sqrt(np.sum(np.square(x_new.imag))))
+    # print(np.sqrt(np.sum(np.square(x_new.real))), np.sqrt(np.sum(np.square(x_new.imag))))
 
-    return x_new.real, times
+    return x_new.real
 
 import matplotlib.pyplot as plt
 
