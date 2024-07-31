@@ -291,7 +291,7 @@ def run(I, M,
     if len(all_commands)>0:
         total_command = copy.copy(all_commands[-1])
     else:
-        total_command = xp.zeros((M.Nact,m.Nact))
+        total_command = xp.zeros((M.Nact,M.Nact))
     del_command = xp.zeros((M.Nact,M.Nact))
     del_acts0 = np.zeros(M.Nacts)
     for i in range(Nitr):
