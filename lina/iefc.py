@@ -73,7 +73,7 @@ def calibrate(sysi,
             sysi.add_dm(s * calib_amp * dm_mode)
             
             # Compute reponse with difference images of probes
-            diff_ims = take_measurement(sysi, probe_modes, probe_amplitude, probe_dms=probe_dms)
+            diff_ims = take_measurement(sysi, probe_modes, probe_amplitude)
             calib_amps.append(calib_amp)
             response += s * diff_ims.reshape(Nprobes, sysi.npsf**2) / (2 * calib_amp)
             
@@ -101,11 +101,8 @@ def calibrate(sysi,
     
     if plot_responses:
         dm_rms = xp.sqrt(xp.mean(xp.square(response_matrix.dot(calibration_modes)), axis=0))
-        dm1_rms = dm_rms[:sysi.Nact**2].reshape(sysi.Nact, sysi.Nact)
-        dm2_rms = dm_rms[sysi.Nact**2:].reshape(sysi.Nact, sysi.Nact)
-        dm1_rms /= xp.max(dm1_rms)
-        dm2_rms /= xp.max(dm2_rms)
-        imshow2(dm1_rms, dm2_rms, 'DM1 RMS Actuator Responses', 'DM2 RMS Actuator Responses')
+        dm_rms = dm_rms.reshape(sysi.Nact, sysi.Nact) / xp.max(dm_rms)
+        imshow1(dm_rms, 'DM RMS Actuator Responses', lognorm=True, vmin=1e-2)
             
     if return_all:
         return response_matrix, xp.array(response_cube)
@@ -140,6 +137,7 @@ def run(sysi,
         total_command = xp.zeros((sysi.Nact,sysi.Nact))
     for i in range(num_iterations):
         print(f"\tClosed-loop iteration {i+1+starting_itr} / {num_iterations+starting_itr}")
+        sysi.subtract_dark = False
         diff_ims = take_measurement(sysi, probe_modes, probe_amplitude, plot=plot_probes)
         measurement_vector = diff_ims[:, control_mask].ravel()
 
@@ -150,6 +148,7 @@ def run(sysi,
         total_command = (1.0-leakage)*total_command + loop_gain*del_command
         sysi.set_dm(total_command)
 
+        sysi.subtract_dark = True
         image_ni = sysi.snap()
         mean_ni = xp.mean(image_ni[control_mask])
 
