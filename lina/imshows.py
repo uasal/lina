@@ -44,8 +44,8 @@ def imshow1(arr,
     
     im = ax.imshow(arr, cmap=cmap, norm=norm, extent=extent)
     if axlims is not None:
-        ax.set_xlim(axlims1[:2])
-        ax.set_ylim(axlims1[2:])
+        ax.set_xlim(axlims[:2])
+        ax.set_ylim(axlims[2:])
     ax.tick_params(axis='x', labelsize=9, rotation=30)
     ax.tick_params(axis='y', labelsize=9, rotation=30)
     ax.set_xlabel(xlabel)
