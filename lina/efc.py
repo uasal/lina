@@ -1,12 +1,34 @@
 from .math_module import xp, ensure_np_array
-from . import utils, scc
-from . import imshows
+from . import utils
+from .imshows import imshow1, imshow2, imshow3
 
 import numpy as np
 import astropy.units as u
 import time
 import copy
 from IPython.display import display, clear_output
+
+def compute_jacobian(M,
+                     calib_modes,
+                     control_mask,
+                     amp=1e-9,
+                     plot_responses=True):
+    Nmodes = calib_modes.shape[0]
+    Nmask = int(control_mask.sum())
+    jac = xp.zeros((2*Nmask, Nmodes))
+    for i in range(Nmodes):
+        E_pos = M.forward(amp*calib_modes[i][M.dm_mask], use_wfe=True, use_vortex=True)[control_mask]
+        E_neg = M.forward(-amp*calib_modes[i][M.dm_mask], use_wfe=True, use_vortex=True)[control_mask]
+        response = (E_pos - E_neg)/(2*amp)
+        jac[::2,i] = xp.real(response)
+        jac[1::2,i] = xp.imag(response)
+
+    if plot_responses:
+        dm_rms = xp.sqrt(xp.mean(xp.square(jac.dot(calib_modes)), axis=0))
+        dm_rms = dm_rms.reshape(M.Nact, M.Nact) / xp.max(dm_rms)
+        imshow1(dm_rms, 'DM RMS Actuator Responses', lognorm=True, vmin=1e-2)
+
+    return jac
 
 def calibrate(sysi, 
               calibration_modes, calibration_amp,
@@ -68,7 +90,7 @@ def calibrate(sysi,
         total_response = response_matrix[::2] + 1j*response_matrix[1::2]
         dm_response = total_response.dot(xp.array(calibration_modes))
         dm_response = xp.sqrt(xp.mean(xp.abs(dm_response)**2, axis=0)).reshape(sysi.Nact, sysi.Nact)
-        imshows.imshow1(dm_response, lognorm=True, vmin=dm_response.max()*1e-2)
+        imshow1(dm_response, lognorm=True, vmin=dm_response.max()*1e-2)
 
     return response_matrix
 

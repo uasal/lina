@@ -8,9 +8,7 @@ import numpy as np
 import cupy as cp
 import matplotlib.pyplot as plt
 
-import hcipy as hp
 import poppy as pp
-# import matlab.engine as mat
 from scipy.ndimage import gaussian_filter
 from skimage.transform import resize, downscale_local_mean
 from skimage.filters import threshold_otsu
@@ -34,7 +32,6 @@ except ImportError:
 from scipy.optimize import minimize
 from scipy.ndimage import binary_erosion #, shift, center_of_mass
 from poppy import zernike
-
 
 def fdpr(fit_mask, images, defocus_values, tol=1e-6, reg=0, wreg=10):
 

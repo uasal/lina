@@ -11,13 +11,13 @@ from IPython.display import clear_output
 import time
 import copy
 
-def run_pwp_bp(sysi, 
-               control_mask, 
-               probes,
-               use='J', jacobian=None, model=None, 
-               reg_cond=1e-3, 
-               plot=False,
-               plot_est=False):
+def run_with_jac(sysi, 
+                 control_mask, 
+                 probes,
+                 jacobian,
+                 reg_cond=1e-3, 
+                 plot=False,
+                 plot_est=False):
     """ 
     This method of PWP will use the supplied probe commands to estimate the electric field
     within the pixels specified by the boolean control mask. 
@@ -30,12 +30,8 @@ def run_pwp_bp(sysi,
         boolean array of focal plane pixels to be estimated
     probes : np.ndarray
         3D array of probes to be used for estimation
-    use : str, optional
-        whether to use a jacobian or the direct model to perform estimation, by default 'J'
     jacobian : xp.ndarray, optional
-        the Jacobian to use if use='J', by default None
-    model : object, optional
-        the model to use, by default None
+        the Jacobian to use for estimating the effect of DM probes in the science focal plane
     plot : bool, optional
         plot all stages of the estimation algorithm, by default False
     plot_est : bool, optional
@@ -70,20 +66,9 @@ def run_pwp_bp(sysi,
     E_probes = xp.zeros((probes.shape[0], 2*Nmask))
     I_diff = xp.zeros((probes.shape[0], Nmask))
     for i in range(len(probes)):
-        if (use=='jacobian' or use.lower()=='j') and jacobian is not None:
-            probe = xp.array(probes[i])
-            E_probe = jacobian.dot(xp.array(probe[sysi.dm_mask.astype(bool)]))
-            E_probe = E_probe[::2] + 1j*E_probe[1::2]
-        elif (use=='model' or use=='m') and model is not None:
-            if i==0: 
-                E_full = model.calc_psf()[control_mask]
-                
-            model.add_dm(probes[i])
-            E_full_probe = model.calc_psf()[control_mask]
-            model.add_dm(-probes[i])
-            
-            E_probe = E_full_probe - E_full
-            # print(type(E_probe))
+        probe = xp.array(probes[i])
+        E_probe = jacobian.dot(xp.array(probe[sysi.dm_mask.astype(bool)]))
+        E_probe = E_probe[::2] + 1j*E_probe[1::2]
             
         if plot:
             E_probe_2d = xp.zeros((sysi.npsf,sysi.npsf), dtype=xp.complex128)
