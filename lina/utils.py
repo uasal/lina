@@ -1,5 +1,5 @@
 from .math_module import xp, _scipy, ensure_np_array
-from .imshows import imshow1, imshow2, imshow3
+from lina.imshows import imshow1, imshow2, imshow3
 
 import numpy as np
 import scipy

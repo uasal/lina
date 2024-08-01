@@ -1,6 +1,6 @@
 from .math_module import xp
-from . import utils, scc
-from . import imshows
+from lina.imshows import imshow1, imshow2, imshow3
+import lina.utils as utils
 
 import numpy as np
 import astropy.units as u
@@ -323,6 +323,49 @@ def run(sysi, ref_im, control_matrix, control_modes, time_series_coeff, zernike_
         prev_wfe = copy.copy(utils.pad_or_crop(sysi.WFE.opd, sysi.npix))
 
 
+def run_llowfsc_iteration(I,
+                          ref_im, 
+                          control_matrix, 
+                          control_modes, 
+                          gain=1/2,
+                          thresh=0,
+                          plot=False,
+                          clear=False,
+                          ):
+
+    image = I.snap_locam()
+    del_im = image - ref_im
+
+    # compute the DM command with the image based on the time delayed wavefront
+    modal_coeff = control_matrix.dot(del_im.flatten())
+    modal_coeff *= xp.abs(modal_coeff) >= thresh
+    modal_coeff *= gain
+    del_dm_command = -control_modes.dot(modal_coeff).reshape(I.Nact,I.Nact)
+    # if reverse_dm_parity: del_dm_correction = xp.rot90(xp.rot90(del_dm_correction))
+    I.add_dm(del_dm_command)
+
+    if plot:
+        dm_command = I.get_dm()
+        pv_stroke = xp.max(dm_command) - xp.min(dm_command)
+        rms_stroke = xp.sqrt(xp.mean(xp.square(dm_command[I.dm_mask])))
+        imshow3(del_im, del_dm_command, dm_command, 
+                'Measured Difference Image', 
+                'Computed DM Correction',
+                f'PV Stroke = {1e9*pv_stroke:.1f}nm\nRMS Stroke = {1e9*rms_stroke:.1f}nm', 
+                cmap1='magma', cmap2='viridis', cmap3='viridis',
+                )
+        
+        if clear: clear_output(wait=True)
 
 
+import threading as th
+
+class Process(th.Timer):  
+    def run(self):  
+        while not self.finished.wait(self.interval):  
+            self.function(*self.args, **self.kwargs)
+##We are now creating a thread timer and controling it  
+# process = Repeat(0.01,print,['Repeating']) 
+# process.start()
+# process.cancel()
 

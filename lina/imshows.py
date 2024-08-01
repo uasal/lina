@@ -1,5 +1,5 @@
 from .math_module import xp, _scipy, cupy_avail, ensure_np_array
-from . import utils
+import lina.utils as utils
 
 import numpy as np
 import scipy
