@@ -7,40 +7,32 @@ import astropy.units as u
 import time
 import copy
 from IPython.display import display, clear_output
-
+import threading as th
 import poppy
 
-def calibrate(sysi, 
-              calibration_modes, calibration_amp,
-              control_mask, 
-              plot=False,
-              ):
-    """
-    This function will generate the response matrix for the LLOWFSC system 
-    using a central difference approximation. 
-    """
+def calibrate(I, calib_modes, control_mask, amps=5e-9, plot=False):
+    time.sleep(2)
+    
+    if np.isscalar(amps):
+        amps = [amps] * Nmodes
+    
+    Nmodes = calib_modes.shape[0]
+    responses = np.zeros((Nmodes, I.nlocam**2))
+    for i in range(Nmodes):
+        mode = calib_modes[i]
+        amp = amps[i]
 
-    nmodes = calibration_modes.shape[0]
-
-    responses = xp.zeros((nmodes, sysi.nllowfsc**2))
-    for i,mode in enumerate(calibration_modes):
-        sysi.set_dm(calibration_amp*mode)
-        im_pos = sysi.snap()
-        sysi.add_dm(-calibration_amp*mode)
-        
-        sysi.set_dm(-calibration_amp*mode)
-        im_neg = sysi.snap()
-        sysi.add_dm(calibration_amp*mode)
+        I.add_dm(amp*mode)
+        im_pos = I.stack_locam()
+        I.add_dm(-2*amp*mode)
+        im_neg = I.stack_locam()
+        I.add_dm(amp*mode)
 
         diff = im_pos - im_neg
-        responses[i] = diff.flatten()/(2*calibration_amp)
+        responses[i] = diff[control_mask]/(2*amp)
 
         if plot:
-            imshows.imshow3(calibration_amp*mode, im_pos, diff, 
-                            f'Calibration Mode {i+1}', 'Absolute Image', 'Difference', 
-                            pxscl2=sysi.llowfsc_pixelscale.to(u.mm/u.pix), 
-                            pxscl3=sysi.llowfsc_pixelscale.to(u.mm/u.pix), 
-                            cmap1='viridis')
+            imshow3(amp*mode, im_pos, diff, f'Mode {i+1}', 'Absolute Image', 'Difference', cmap1='viridis')
 
     response_matrix = responses.T
 
@@ -241,92 +233,11 @@ def run_bb_model(sysi,
             
     return llowfsc_ims, llowfsc_commands
 
-
-def run(sysi, ref_im, control_matrix, control_modes, time_series_coeff, zernike_modes,
-             lyot_stop=None, 
-             reverse_dm_parity=False,
-             plot=False):
-    """_summary_
-
-    Parameters
-    ----------
-    sysi : _type_
-        _description_
-    ref_im : _type_
-        _description_
-    control_matrix : _type_
-        _description_
-    control_modes : _type_
-        _description_
-    time_series_coeff : _type_
-        _description_
-    zernike_modes : _type_
-        _description_
-    plot : bool, optional
-        _description_, by default False
-    """
-    Nitr = time_series_coeff.shape[1]
-    Nc = control_modes.shape[0]
-    Nz = zernike_modes.shape[0]
-    c_modes = control_modes.reshape(Nc, sysi.Nact**2).T
-    z_modes = zernike_modes.reshape(Nz, sysi.npix**2).T
-    print(c_modes.shape, z_modes.shape)
-
-    if lyot_stop is None:
-        lyot_diam = 8.6*u.mm # dont make this hardcoded
-        lyot_stop = poppy.CircularAperture(name='Lyot Stop', radius=lyot_diam/2.0)
-        wfs_lyot_stop = poppy.InverseTransmission(lyot_stop)
-
-    prev_wfe = xp.zeros((sysi.npix, sysi.npix))
-    for i in range(Nitr):
-        print(1)
-        new_wfe = z_modes.dot(time_series_coeff[:,i]).reshape(sysi.npix,sysi.npix)
-
-        llowfsc_im = sysi.snap_llowfsc()
-        del_im = llowfsc_im - ref_im
-        
-        modal_coeff = 2*control_matrix.dot(del_im.flatten())
-        del_dm_command = -c_modes.dot(modal_coeff).reshape(sysi.Nact,sysi.Nact)
-        if reverse_dm_parity:
-            del_dm_command = xp.rot90(xp.rot90(del_dm_command))
-        sysi.add_dm(del_dm_command/2)
-        
-        est_abs = xp.rot90(xp.rot90(z_modes.dot(modal_coeff).reshape(sysi.npix,sysi.npix)))
-
-        coro_im = sysi.snap()
-
-        if plot:
-            rms_wfe = xp.sqrt(xp.mean(xp.square(new_wfe[sysi.pupil_mask])))
-            rms_est_wfe = xp.sqrt(xp.mean(xp.square(est_abs[sysi.pupil_mask])))
-            rms_residual = xp.sqrt(xp.mean(xp.square(est_residuals[sysi.pupil_mask])))
-            imshows.imshow3(new_wfe, est_abs, actual_abs,  
-                            f'Current WFE: {rms_wfe:.2e}', 
-                            f'Estimated WFE: {rms_est_wfe:.2e}',
-                            f'Estimated Residual WFE: {rms_residual:.2e}',
-                            npix1=sysi.npix, npix2=sysi.npix, npix3=sysi.npix,
-                            vmin1=-20e-9, vmax1=20e-9, vmin2=-20e-9, vmax2=20e-9, vmin3=-20e-9, vmax3=20e-9)
-            
-            dm_command = sysi.get_dm()
-            pv_stroke = xp.max(dm_command) - xp.min(dm_command)
-            rms_stroke = xp.sqrt(xp.mean(xp.square(dm_command[sysi.dm_mask])))
-            imshows.imshow3(del_im, del_dm_command, coro_im, 
-                            'Measured LLOWFSC Image (Difference)', 
-                            f'Computed DM Correction:\nPV Stroke = {pv_stroke:.2e}\nRMS Stroke = {rms_stroke:.2e}', 
-                            'Coronagraphic Image',
-                            cmap2='viridis', 
-                            lognorm3=True, vmin3=1e-11, 
-                            )
-            # imshows.imshow2(est_abs, actual_abs,
-            #                 'Estimated WFE', 'True WFE (from model)',
-            #                 vmin2=-20e-9, vmax2=20e-9)
-
-        prev_wfe = copy.copy(utils.pad_or_crop(sysi.WFE.opd, sysi.npix))
-
-
 def run_llowfsc_iteration(I,
                           ref_im, 
                           control_matrix, 
-                          control_modes, 
+                          control_modes,
+                          control_mask, 
                           gain=1/2,
                           thresh=0,
                           plot=False,
@@ -337,7 +248,7 @@ def run_llowfsc_iteration(I,
     del_im = image - ref_im
 
     # compute the DM command with the image based on the time delayed wavefront
-    modal_coeff = control_matrix.dot(del_im.flatten())
+    modal_coeff = control_matrix.dot(del_im[control_mask])
     modal_coeff *= xp.abs(modal_coeff) >= thresh
     modal_coeff *= gain
     del_dm_command = -control_modes.dot(modal_coeff).reshape(I.Nact,I.Nact)
@@ -354,18 +265,15 @@ def run_llowfsc_iteration(I,
                 f'PV Stroke = {1e9*pv_stroke:.1f}nm\nRMS Stroke = {1e9*rms_stroke:.1f}nm', 
                 cmap1='magma', cmap2='viridis', cmap3='viridis',
                 )
-        
         if clear: clear_output(wait=True)
-
-
-import threading as th
 
 class Process(th.Timer):  
     def run(self):  
         while not self.finished.wait(self.interval):  
             self.function(*self.args, **self.kwargs)
-##We are now creating a thread timer and controling it  
-# process = Repeat(0.01,print,['Repeating']) 
+
+# process = Repeat(0.1, print, ['Repeating']) 
 # process.start()
+# time.sleep(5)
 # process.cancel()
 
