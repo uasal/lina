@@ -11,13 +11,13 @@ import threading as th
 import poppy
 
 def calibrate(I, calib_modes, control_mask, amps=5e-9, plot=False):
-    time.sleep(2)
-    
+    # time.sleep(2)
+    Nmodes = calib_modes.shape[0]
+    Nmask = int(control_mask.sum())
     if np.isscalar(amps):
         amps = [amps] * Nmodes
-    
-    Nmodes = calib_modes.shape[0]
-    responses = np.zeros((Nmodes, I.nlocam**2))
+
+    responses = np.zeros((Nmodes, Nmask))
     for i in range(Nmodes):
         mode = calib_modes[i]
         amp = amps[i]
@@ -37,7 +37,6 @@ def calibrate(I, calib_modes, control_mask, amps=5e-9, plot=False):
     response_matrix = responses.T
 
     return response_matrix
-
 
 def run_model(sysi, static_wfe, ref_im, 
               control_matrix, control_modes, 
@@ -249,7 +248,7 @@ def run_llowfsc_iteration(I,
 
     # compute the DM command with the image based on the time delayed wavefront
     modal_coeff = control_matrix.dot(del_im[control_mask])
-    modal_coeff *= xp.abs(modal_coeff) >= thresh
+    modal_coeff *= np.abs(modal_coeff) >= thresh
     modal_coeff *= gain
     del_dm_command = -control_modes.dot(modal_coeff).reshape(I.Nact,I.Nact)
     # if reverse_dm_parity: del_dm_correction = xp.rot90(xp.rot90(del_dm_correction))
