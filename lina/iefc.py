@@ -1,6 +1,6 @@
 from .math_module import xp, _scipy, ensure_np_array
-from .imshows import imshow1, imshow2, imshow3
-from . import utils
+import lina.utils as utils
+from lina.imshows import imshow1, imshow2, imshow3
 
 import numpy as np
 import astropy.units as u
@@ -109,7 +109,6 @@ def calibrate(sysi,
     else:
         return response_matrix
     
-
 def run(sysi,
         control_matrix,
         probe_modes, probe_amplitude, 
@@ -125,6 +124,7 @@ def run(sysi,
         all_ims=None, 
         all_commands=None,
        ):
+    
     
     print('Running iEFC...')
     start = time.time()
@@ -171,6 +171,64 @@ def run(sysi,
     
     print('Closed loop for given control matrix completed in {:.3f}s.'.format(time.time()-start))
     return all_ims, all_commands
+
+def run_iteration(I,
+                control_matrix,
+                probe_modes, probe_amplitude, 
+                calibration_modes,
+                # modal_matrix,
+                control_mask,
+                gain=1/2,
+                leakage=0.0,
+                plot=True,
+                plot_radial_contrast=False,
+                plot_probes=False,
+                clear=True,
+                all_ims=None, 
+                all_commands=None,
+                ):
+    '''
+    
+    '''
+    I.return_ni = True
+
+    I.subtract_dark = False
+    diff_ims = take_measurement(I, probe_modes, probe_amplitude, plot=plot_probes)
+    measurement_vector = diff_ims[:, control_mask].ravel()
+
+    # compute the DM command with the image based on the time delayed wavefront
+    modal_coeff = -control_matrix.dot(measurement_vector)
+    del_command = calibration_modes.T.dot(modal_coeff).reshape(I.Nact,I.Nact)
+    # del_command = modal_matrix.dot(modal_coeff).reshape(I.Nact,I.Nact)
+
+    # maybe we want to implement leakage as just removing a fraction of the previous
+    # command and not just removing a fraction of the total iEFC command
+    total_command = I.get_dm()
+    total_command = (1.0-leakage)*total_command + gain*del_command
+    # total_command = I.get_dm()
+    # total_command = total_command - leakage*all_commands[-1] + gain*del_command
+    I.set_dm(total_command)
+
+    I.subtract_dark = True
+    image_ni = I.snap()
+    mean_ni = xp.mean(image_ni[control_mask])
+
+    if all_ims is not None: all_ims.append(copy.copy(image_ni))
+    if all_commands is not None: all_commands.append(copy.copy(total_command))
+
+    if plot:
+        imshow3(del_command, total_command, image_ni, 
+                f'Iteration {1:d}: $\delta$DM', 
+                'Total DM Command', 
+                f'Image\nMean NI = {mean_ni:.3e}',
+                cmap1='viridis', cmap2='viridis', 
+                pxscl3=I.psf_pixelscale_lamD, lognorm3=True, vmin3=1e-9)
+        
+        if plot_radial_contrast:
+                utils.plot_radial_contrast(image_ni, control_mask, I.psf_pixelscale_lamD, nbins=50,
+#                                            ylims=[1e-10, 1e-4],
+                                          )
+        if clear: clear_output(wait=True)
 
 
 

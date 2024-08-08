@@ -232,16 +232,16 @@ def run_bb_model(sysi,
             
     return llowfsc_ims, llowfsc_commands
 
-def run_llowfsc_iteration(I,
-                          ref_im, 
-                          control_matrix, 
-                          control_modes,
-                          control_mask, 
-                          gain=1/2,
-                          thresh=0,
-                          plot=False,
-                          clear=False,
-                          ):
+def run_iteration(I,
+                ref_im, 
+                control_matrix, 
+                control_modes,
+                control_mask, 
+                gain=1/2,
+                thresh=0,
+                plot=False,
+                clear=False,
+                ):
 
     image = I.snap_locam()
     del_im = image - ref_im

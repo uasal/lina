@@ -1,5 +1,6 @@
 from .math_module import xp, _scipy, ensure_np_array
 from lina.imshows import imshow1, imshow2, imshow3
+import threading as th
 
 import numpy as np
 import scipy
@@ -8,6 +9,16 @@ from astropy.io import fits
 import poppy
 import pickle
 from matplotlib.patches import Circle, Rectangle
+
+class Process(th.Timer):  
+    def run(self):  
+        while not self.finished.wait(self.interval):  
+            self.function(*self.args, **self.kwargs)
+
+# process = Repeat(0.1, print, ['Repeating']) 
+# process.start()
+# time.sleep(5)
+# process.cancel()
 
 def pad_or_crop( arr_in, npix ):
     n_arr_in = arr_in.shape[0]
