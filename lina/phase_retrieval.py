@@ -8,8 +8,8 @@ import numpy as np
 import cupy as cp
 import matplotlib.pyplot as plt
 
-import hcipy as hp
-import poppy as pp
+# import hcipy as hp
+# import poppy as pp
 # import matlab.engine as mat
 from scipy.ndimage import gaussian_filter
 from skimage.transform import resize, downscale_local_mean
@@ -21,7 +21,7 @@ import multiprocessing as mp
 from time import sleep
 
 import logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.CRITICAL)
 logger = logging.getLogger('fdpr2')
 
 import numpy as np
@@ -33,29 +33,35 @@ except ImportError:
 
 from scipy.optimize import minimize
 from scipy.ndimage import binary_erosion #, shift, center_of_mass
-from poppy import zernike
+# from poppy import zernike
 
 
-def fdpr(fit_mask, images, defocus_values, tol=1e-6, reg=0, wreg=10):
+def fdpr(fit_mask, images, defocus_values, nterms, tol=1e-6, reg=0, wreg=10):
 
     # PV to RMS and sign convention change
     Ediv = get_defocus_probes(fit_mask, cp.asarray(defocus_values))
 
     # phase retrieval parameters
-    modes = cp.asnumpy(pp.zernike.arbitrary_basis(fit_mask, nterms=37, outside=0))
+    modes = cp.asnumpy(pp.zernike.arbitrary_basis(fit_mask, nterms=nterms, outside=0))
 
-    # square-ify the PSFs
-    dims = int(np.sqrt(images[0].shape))
-    psfs_sq = cp.asarray([images[0].to_dict()['values'].reshape(dims, dims), 
-                          images[1].to_dict()['values'].reshape(dims, dims),
-                          images[2].to_dict()['values'].reshape(dims, dims)])
+    # # square-ify the PSF
+    # dims = int(np.sqrt(images[0].shape))
+    # psfs_sq = []
+    # for image in images:
+    #     psfs_sq.append(image.to_dict()['values'].reshape(dims, dims)), 
+    # cp.asnumpy(psfs_sq)
 
     # run phase retrieval
-    prdict = run_phase_retrieval(psfs_sq, fit_mask, tol, reg, wreg, Ediv, modes=modes, fit_amp=False)
+    prdict = run_phase_retrieval(images, fit_mask, tol, reg, wreg, Ediv, modes=modes, fit_amp=False)
 
     return prdict
 
 
+def get_pupil_fit_mask(psf):
+    pupil_fft = np.abs(ifft2_shiftnorm(psf))
+    threshold = threshold_otsu(pupil_fft)
+    fitmask = pupil_fft > threshold
+    return fitmask
 
 
 

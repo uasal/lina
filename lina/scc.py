@@ -6,23 +6,18 @@ import copy
 
 from IPython.display import display, clear_output
 
-def estimate_coherent(sysi, scc_ref_image, r_npix, shift, 
-                      sci_image=None, dark_mask=None, plot=False):
+def estimate_coherent(image, scc_reference, r_npix, shift, 
+                      focal_mask=None, plot=False):
     '''
     r_npix:
         radius of sidebands in units of pixels
     shift:
         location of sideband centers in pixels (from center of array)
     '''
-    if sci_image is None:
-        im = sysi.snap()
-    else:
-        im = sci_image
+    im = copy.deepcopy(image)
     
-    if dark_mask is not None:
-        im *= dark_mask
-
-    im_max = im.max()
+    if focal_mask is not None:
+        im *= focal_mask
     
     im_fft = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(im), norm='ortho'))
     
@@ -42,10 +37,10 @@ def estimate_coherent(sysi, scc_ref_image, r_npix, shift,
     
     E_est = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(im_fft_masked), norm='ortho'))
 
-    if dark_mask is not None:
-        E_est *= dark_mask
+    if focal_mask is not None:
+        E_est *= focal_mask
         
-    E_est /= xp.sqrt(scc_ref_image)
+    E_est /= xp.sqrt(scc_reference)
 
     return E_est
 
