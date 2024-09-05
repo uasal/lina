@@ -13,76 +13,6 @@ from pathlib import Path
 import time
 import copy
 
-def create_poke_modes(I):
-    poke_modes = xp.zeros((I.Nacts, I.Nact, I.Nact))
-    count = 0
-    for i in range(I.Nact):
-        for j in range(I.Nact):
-            if I.dm_mask[i,j]:
-                poke_modes[count, i,j] = 1
-                count += 1
-    
-    return poke_modes
-
-def compute_jacobian(M,
-                     modes,
-                     control_mask,
-                     amp=1e-9):
-    Nmodes = modes.shape[0]
-    jac = xp.zeros((2*m.Nmask, Nmodes))
-    for i in range(Nmodes):
-        E_pos = M.forward(amp*modes[i][M.dm_mask], use_wfe=True, use_vortex=True)[control_mask]
-        E_neg = M.forward(-amp*modes[i][M.dm_mask], use_wfe=True, use_vortex=True)[control_mask]
-        response = (E_pos - E_neg)/(2*amp)
-        jac[::2,i] = xp.real(response)
-        jac[1::2,i] = xp.imag(response)
-
-    return jac
-
-def sim_efc(M,
-            control_matrix,  
-            control_mask,
-            Nitr=3, 
-            gain=0.5, 
-            all_ims=[], 
-            all_efs=[],
-            all_commands=[],
-            ):
-    
-    starting_itr = len(all_ims)
-
-    if len(all_commands)>0:
-        total_command = copy.copy(all_commands[-1])
-    else:
-        total_command = xp.zeros((M.Nact,M.Nact))
-    del_command = xp.zeros((M.Nact,M.Nact))
-    E_ab = xp.zeros(2*M.Nmask)
-    for i in range(Nitr):
-        E_est = M.forward(total_command[m.dm_mask], use_vortex=True, use_wfe=True,)
-        E_ab[::2] = E_est.real[control_mask]
-        E_ab[1::2] = E_est.imag[control_mask]
-
-        del_acts = -gain * control_matrix.dot(E_ab)
-        del_command[M.dm_mask] = del_acts
-        total_command += del_command
-        
-        image_ni = M.snap(total_command[M.dm_mask], use_vortex=True, use_wfe=True)
-
-        mean_ni = xp.mean(image_ni[control_mask])
-
-        all_ims.append(copy.copy(image_ni))
-        all_efs.append(copy.copy(E_ab))
-        all_commands.append(copy.copy(total_command))
-
-        imshow3(del_command, total_command, image_ni, 
-                f'Iteration {starting_itr + i + 1:d}: $\delta$DM', 
-                'Total DM Command', 
-                f'Image\nMean NI = {mean_ni:.3e}',
-                cmap1='viridis', cmap2='viridis', 
-                pxscl3=M.psf_pixelscale_lamD, lognorm3=True, vmin3=1e-9)
-
-    return all_ims, all_efs, all_commands
-
 def sim_pwp(m, current_acts, control_mask,
             probes, probe_amp, 
             reg_cond=1e-3, 
@@ -272,10 +202,11 @@ def sim(m, val_and_grad, control_mask,
 
     return all_ims, all_efs, all_commands
 
-def run(I, M, 
+def run(I, 
+        M, 
         val_and_grad,
         control_mask,
-        est_fun, est_params,
+        est_fun=None, est_params=None,
         Nitr=3, 
         reg_cond=1e-2,
         bfgs_tol=1e-3,
@@ -297,7 +228,11 @@ def run(I, M,
     for i in range(Nitr):
         print('Running estimation algorithm ...')
         I.subtract_dark = False
-        E_ab = est_fun(I, M, ensure_np_array(total_command[M.dm_mask]), **est_params)
+        
+        if est_fun is not None and est_params is not None: 
+            E_ab = est_fun(I, M, ensure_np_array(total_command[M.dm_mask]), **est_params)
+        else:
+            E_ab = I.calc_wf()
         
         print('Computing EFC command with L-BFGS')
         res = minimize(val_and_grad, 
