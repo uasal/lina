@@ -273,45 +273,73 @@ def create_hadamard_modes(dm_mask):
     
     return had_modes
 
-def create_fourier_modes(sysi, control_mask, fourier_sampling=0.75, use='both', return_fs=False):
-    xfp = (np.linspace(-sysi.npsf/2, sysi.npsf/2-1, sysi.npsf) + 1/2) * sysi.psf_pixelscale_lamD
-    fpx, fpy = np.meshgrid(xfp,xfp)
+# def create_fourier_modes(sysi, control_mask, fourier_sampling=0.75, use='both', return_fs=False):
+#     xfp = (np.linspace(-sysi.npsf/2, sysi.npsf/2-1, sysi.npsf) + 1/2) * sysi.psf_pixelscale_lamD
+#     fpx, fpy = np.meshgrid(xfp,xfp)
     
-    intp = scipy.interpolate.interp2d(xfp, xfp, ensure_np_array(control_mask)) # setup the interpolation function
+#     intp = scipy.interpolate.interp2d(xfp, xfp, ensure_np_array(control_mask)) # setup the interpolation function
+#     # intp = scipy.interpolate.RectBivariateSpline(xfp, xfp, ensure_np_array(control_mask)) # setup the interpolation function
+
+#     xpp = np.linspace(-sysi.Nact/2, sysi.Nact/2-1, sysi.Nact) + 1/2
+#     xpp = (np.linspace(-sysi.Nact/2, sysi.Nact/2-1, sysi.Nact) + 1/2) / (8.6/10.2) 
+#     ppx, ppy = np.meshgrid(xpp,xpp)
     
-    xpp = np.linspace(-sysi.Nact/2, sysi.Nact/2-1, sysi.Nact) + 1/2
-    xpp = (np.linspace(-sysi.Nact/2, sysi.Nact/2-1, sysi.Nact) + 1/2) / (8.6/10.2) 
-    ppx, ppy = np.meshgrid(xpp,xpp)
+#     fourier_lim = fourier_sampling * int(np.round(xfp.max()/fourier_sampling))
+#     xfourier = np.arange(-fourier_lim-fourier_sampling/2, fourier_lim+fourier_sampling, fourier_sampling)
+#     fourier_x, fourier_y = np.meshgrid(xfourier, xfourier) 
     
-    fourier_lim = fourier_sampling * int(np.round(xfp.max()/fourier_sampling))
-    xfourier = np.arange(-fourier_lim-fourier_sampling/2, fourier_lim+fourier_sampling, fourier_sampling)
-    fourier_x, fourier_y = np.meshgrid(xfourier, xfourier) 
+#     # Select the x,y frequencies for the Fourier modes to calibrate the dark hole region
+#     fourier_grid_mask = ( (intp(xfourier, xfourier) * (((fourier_x!=0) + (fourier_y!=0)) > 0)) > 0 )
     
-    # Select the x,y frequencies for the Fourier modes to calibrate the dark hole region
-    fourier_grid_mask = ( (intp(xfourier, xfourier) * (((fourier_x!=0) + (fourier_y!=0)) > 0)) > 0 )
+#     fxs = fourier_x.ravel()[fourier_grid_mask.ravel()]
+#     fys = fourier_y.ravel()[fourier_grid_mask.ravel()]
+#     sampled_fs = np.vstack((fxs, fys)).T
     
-    fxs = fourier_x.ravel()[fourier_grid_mask.ravel()]
-    fys = fourier_y.ravel()[fourier_grid_mask.ravel()]
-    sampled_fs = np.vstack((fxs, fys)).T
+#     cos_modes = []
+#     sin_modes = []
+#     for f in sampled_fs:
+#         fx = f[0]/sysi.Nact
+#         fy = f[1]/sysi.Nact
+#         cos_modes.append( ( np.cos(2 * np.pi * (fx * ppx + fy * ppy)) * ensure_np_array(sysi.dm_mask) ).flatten() ) 
+#         sin_modes.append( ( np.sin(2 * np.pi * (fx * ppx + fy * ppy)) * ensure_np_array(sysi.dm_mask) ).flatten() )
+#     if use=='both' or use=='b':
+#         modes = cos_modes + sin_modes
+#     elif use=='cos' or use=='c':
+#         modes = cos_modes
+#     elif use=='sin' or use=='s':
+#         modes = sin_modes
     
-    cos_modes = []
-    sin_modes = []
-    for f in sampled_fs:
-        fx = f[0]/sysi.Nact
-        fy = f[1]/sysi.Nact
-        cos_modes.append( ( np.cos(2 * np.pi * (fx * ppx + fy * ppy)) * ensure_np_array(sysi.dm_mask) ).flatten() ) 
-        sin_modes.append( ( np.sin(2 * np.pi * (fx * ppx + fy * ppy)) * ensure_np_array(sysi.dm_mask) ).flatten() )
-    if use=='both' or use=='b':
-        modes = cos_modes + sin_modes
-    elif use=='cos' or use=='c':
-        modes = cos_modes
-    elif use=='sin' or use=='s':
-        modes = sin_modes
+#     if return_fs:
+#         return np.array(modes), sampled_fs
+#     else:
+#         return np.array(modes)
+    
+def create_fourier_modes(dm_mask, npsf, psf_pixelscale_lamD, iwa, owa, fourier_sampling=0.75, 
+                         which='both', 
+                         return_fs=False,
+                         plot=False):
+    Nact = dm_mask.shape[0]
+    nfg = int(xp.round(npsf * psf_pixelscale_lamD/fourier_sampling))
+    yf, xf = (xp.indices((nfg, nfg)) - nfg//2 + 1/2) * fourier_sampling
+    fourier_cm = create_annular_focal_plane_mask(nfg, fourier_sampling, iwa-fourier_sampling, owa+fourier_sampling, edge=iwa-fourier_sampling)
+    ypp, xpp = (xp.indices((Nact, Nact)) - Nact//2 + 1/2)
+
+    sampled_fs = xp.array([xf[fourier_cm], yf[fourier_cm]]).T
+    if plot: imshow1(fourier_cm, pxscl=fourier_sampling, grid=True)
+    
+    fourier_modes = []
+    for i in range(len(sampled_fs)):
+        fx = sampled_fs[i,0]
+        fy = sampled_fs[i,1]
+        if which=='both' or which=='cos':
+            fourier_modes.append( dm_mask * xp.cos(2 * np.pi * (fx*xpp + fy*ypp)/Nact) )
+        if which=='both' or which=='sin':
+            fourier_modes.append( dm_mask * xp.sin(2 * np.pi * (fx*xpp + fy*ypp)/Nact) )
     
     if return_fs:
-        return np.array(modes), sampled_fs
+        return xp.array(fourier_modes), sampled_fs
     else:
-        return np.array(modes)
+        return xp.array(fourier_modes)
 
 def create_fourier_probes(sysi, control_mask, fourier_sampling=0.25, shift=(0,0), nprobes=2,
                           use_weighting=False, plot=False): 
