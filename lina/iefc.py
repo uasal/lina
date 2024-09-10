@@ -42,14 +42,14 @@ def calibrate(sysi,
               control_mask, 
               probe_amplitude, probe_modes, 
               calibration_amplitude, calibration_modes, 
-              probe_dms=1, 
               scale_factors=None, 
               return_all=False,
-              plot_responses=True
+              plot_responses=False, 
               ):
     print('Calibrating iEFC...')
     
     Nprobes = probe_modes.shape[0]
+    Nmodes = calibration_modes.shape[0]
 
     response_matrix = []
     calib_amps = []
@@ -61,7 +61,6 @@ def calibrate(sysi,
     for ci, calibration_mode in enumerate(calibration_modes):
         response = 0
         for s in [-1, 1]: # We need a + and - probe to estimate the jacobian
-            # reshape calibration mode into the DM1 and DM2 components
             dm_mode = calibration_mode.reshape(sysi.Nact, sysi.Nact)
 
             if scale_factors is not None: 
@@ -93,16 +92,16 @@ def calibrate(sysi,
         
         if return_all: 
             response_cube.append(response)
-    print()
-    print('Calibration complete.')
+    print('\nCalibration complete.')
+
     response_matrix = xp.array(response_matrix).T # this is the response matrix to be inverted
     if return_all:
         response_cube = xp.array(response_cube)
     
     if plot_responses:
-        dm_rms = xp.sqrt(xp.mean(xp.square(response_matrix.dot(calibration_modes)), axis=0))
-        dm_rms = dm_rms.reshape(sysi.Nact, sysi.Nact) / xp.max(dm_rms)
-        imshow1(dm_rms, 'DM RMS Actuator Responses', lognorm=True, vmin=1e-2)
+        dm_response_map = xp.sqrt(xp.mean(xp.square(response_matrix.dot(calibration_modes.reshape(Nmodes, -1))), axis=0))
+        dm_response_map = dm_response_map.reshape(sysi.Nact,sysi.Nact) / xp.max(dm_response_map)
+        imshow1(dm_response_map, 'DM RMS Actuator Responses', lognorm=True, vmin=1e-2)
             
     if return_all:
         return response_matrix, xp.array(response_cube)
@@ -125,10 +124,12 @@ def run(sysi,
         all_commands=None,
        ):
     
-    
     print('Running iEFC...')
     start = time.time()
     starting_itr = len(all_ims)
+
+    Nmodes = calibration_modes.shape[0]
+    modal_matrix = calibration_modes.reshape(Nmodes, -1)
 
     total_coeff = 0.0
     if len(all_commands)>0:
@@ -142,9 +143,10 @@ def run(sysi,
         measurement_vector = diff_ims[:, control_mask].ravel()
 
         modal_coeff = -control_matrix.dot(measurement_vector)
+        print(modal_matrix.shape, modal_coeff.shape)
         # total_coeff = (1.0-leakage)*total_coeff + loop_gain*modal_coeff
         # total_command = calibration_modes.T.dot(total_coeff).reshape(sysi.Nact,sysi.Nact)
-        del_command = calibration_modes.T.dot(modal_coeff).reshape(sysi.Nact,sysi.Nact)
+        del_command = modal_matrix.T.dot(modal_coeff).reshape(sysi.Nact,sysi.Nact)
         total_command = (1.0-leakage)*total_command + loop_gain*del_command
         sysi.set_dm(total_command)
 

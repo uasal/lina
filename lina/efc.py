@@ -12,10 +12,12 @@ def compute_jacobian(M,
                      calib_modes,
                      control_mask,
                      amp=1e-9,
-                     plot_responses=True):
+                     plot_responses=True,
+                     return_all=False):
     Nmodes = calib_modes.shape[0]
     Nmask = int(control_mask.sum())
     jac = xp.zeros((2*Nmask, Nmodes))
+
     for i in range(Nmodes):
         E_pos = M.forward(amp*calib_modes[i][M.dm_mask], use_wfe=True, use_vortex=True)[control_mask]
         E_neg = M.forward(-amp*calib_modes[i][M.dm_mask], use_wfe=True, use_vortex=True)[control_mask]
@@ -29,12 +31,13 @@ def compute_jacobian(M,
         imshows.imshow1(dm_rms, 'DM RMS Actuator Responses', lognorm=True, vmin=1e-2)
 
     return jac
-
+    
 def calibrate(sysi, 
               calibration_modes, calibration_amp,
               control_mask, 
               scc_fun=None, scc_params=None,
               plot=False,
+              return_all=False, 
               ):
     """
     This function will compute the Jacobian for EFC using either the system model 
@@ -60,25 +63,24 @@ def calibrate(sysi,
     Nmask = int(control_mask.sum())
     
     response_matrix = xp.zeros((2*Nmask, Nmodes), dtype=xp.float64)
+    if return_all: response_cube = xp.zeros((sysi.npsf**2, 2, Nmodes))
     print('Calculating Jacobian: ')
     for i,dm_mode in enumerate(calibration_modes):
         response = 0
         for s in [-1, 1]:
             # Add the mode to the DMs
             sysi.add_dm(s * calibration_amp * dm_mode.reshape(sysi.Nact,sysi.Nact))
-            
-            # Compute reponse with difference images of probes
-            if scc_fun is None:
-                efield = sysi.calc_wf()
-            else:
-                efield = scc_fun(sysi, **scc_params)
+            # Compute/Measure reponse with model or SCC
+            efield = sysi.calc_wf() if scc_fun is None else scc_fun(sysi, **scc_params)
             response += s * efield / (2 * calibration_amp)
-            
             # Remove the mode form the DMs
             sysi.add_dm(-s * calibration_amp * dm_mode.reshape(sysi.Nact,sysi.Nact))
 
         response_matrix[::2,i] = response[control_mask].real
         response_matrix[1::2,i] = response[control_mask].imag
+        if return_all:
+            response_cube[:,0,i] = xp.real(response.ravel())
+            response_cube[:,1,i] = xp.imag(response.ravel())
 
         print('\tCalculated response for mode {:d}/{:d}. Elapsed time={:.3f} sec.'.format(i+1, Nmodes, time.time()-start), end='')
         print("\r", end="")
@@ -93,7 +95,10 @@ def calibrate(sysi,
         dm_response_map /= xp.max(dm_response_map)
         imshows.imshow1(dm_response_map, lognorm=True, vmin=1e-2)
 
-    return response_matrix
+    if return_all:
+        return response_matrix, response_cube
+    else:
+        return response_matrix
 
 def run(sysi, 
         control_matrix,

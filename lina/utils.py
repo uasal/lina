@@ -8,13 +8,16 @@ import astropy.units as u
 from astropy.io import fits
 import poppy
 import pickle
+
+import matplotlib.pyplot as plt
+plt.rcParams['image.origin'] = 'lower'
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.patches import Circle, Rectangle
 
 class Process(th.Timer):  
     def run(self):  
         while not self.finished.wait(self.interval):  
             self.function(*self.args, **self.kwargs)
-
 # process = Repeat(0.1, print, ['Repeating']) 
 # process.start()
 # time.sleep(5)
@@ -49,30 +52,30 @@ def rotate_arr(arr, rotation, reshape=False, order=1):
     return rotated_arr
 
 def interp_arr(arr, pixelscale, new_pixelscale, order=1):
-        Nold = arr.shape[0]
-        old_xmax = pixelscale * Nold/2
+    Nold = arr.shape[0]
+    old_xmax = pixelscale * Nold/2
 
-        x,y = xp.ogrid[-old_xmax:old_xmax-pixelscale:Nold*1j,
-                       -old_xmax:old_xmax-pixelscale:Nold*1j]
+    x,y = xp.ogrid[-old_xmax:old_xmax-pixelscale:Nold*1j,
+                    -old_xmax:old_xmax-pixelscale:Nold*1j]
 
-        Nnew = int(np.ceil(2*old_xmax/new_pixelscale)) - 1
-        new_xmax = new_pixelscale * Nnew/2
+    Nnew = int(np.ceil(2*old_xmax/new_pixelscale)) - 1
+    new_xmax = new_pixelscale * Nnew/2
 
-        newx,newy = xp.mgrid[-new_xmax:new_xmax-new_pixelscale:Nnew*1j,
-                             -new_xmax:new_xmax-new_pixelscale:Nnew*1j]
+    newx,newy = xp.mgrid[-new_xmax:new_xmax-new_pixelscale:Nnew*1j,
+                            -new_xmax:new_xmax-new_pixelscale:Nnew*1j]
+    
+    x0 = x[0,0]
+    y0 = y[0,0]
+    dx = x[1,0] - x0
+    dy = y[0,1] - y0
 
-        x0 = x[0,0]
-        y0 = y[0,0]
-        dx = x[1,0] - x0
-        dy = y[0,1] - y0
+    ivals = (newx - x0)/dx
+    jvals = (newy - y0)/dy
 
-        ivals = (newx - x0)/dx
-        jvals = (newy - y0)/dy
+    coords = xp.array([ivals, jvals])
 
-        coords = xp.array([ivals, jvals])
-
-        interped_arr = _scipy.ndimage.map_coordinates(arr, coords, order=order)
-        return interped_arr
+    interped_arr = _scipy.ndimage.map_coordinates(arr, coords, order=order)
+    return interped_arr
 
 def generate_wfe(diam, 
                  npix=256, oversample=1, 
@@ -216,7 +219,6 @@ def create_box_focal_plane_mask(sysi, x0, y0, width, height):
     mask = ( abs(x - x0) < width/2 ) * ( abs(y - y0) < height/2 )
     return mask > 0
 
-
 def masked_rms(image,mask=None):
     return np.sqrt(np.mean(image[mask]**2))
 
@@ -252,12 +254,11 @@ def create_random_probes(rms, alpha, dm_mask, fmin=1, fmax=17, nprobes=3,
             else:
                 imshows.imshow1(probes[i])
                 
-                
-    
     return probes
 
 def create_hadamard_modes(dm_mask): 
     Nacts = dm_mask.sum().astype(int)
+    Nact = dm_mask.shape[0]
     np2 = 2**int(xp.ceil(xp.log2(Nacts)))
     hmodes = xp.array(scipy.linalg.hadamard(np2))
     
@@ -269,50 +270,9 @@ def create_hadamard_modes(dm_mask):
         mode = xp.zeros((dm_mask.shape[0]**2))
         mode[inds] = hmode
         had_modes.append(mode)
-    had_modes = xp.array(had_modes)
+    had_modes = xp.array(had_modes).reshape(np2, Nact, Nact)
     
     return had_modes
-
-# def create_fourier_modes(sysi, control_mask, fourier_sampling=0.75, use='both', return_fs=False):
-#     xfp = (np.linspace(-sysi.npsf/2, sysi.npsf/2-1, sysi.npsf) + 1/2) * sysi.psf_pixelscale_lamD
-#     fpx, fpy = np.meshgrid(xfp,xfp)
-    
-#     intp = scipy.interpolate.interp2d(xfp, xfp, ensure_np_array(control_mask)) # setup the interpolation function
-#     # intp = scipy.interpolate.RectBivariateSpline(xfp, xfp, ensure_np_array(control_mask)) # setup the interpolation function
-
-#     xpp = np.linspace(-sysi.Nact/2, sysi.Nact/2-1, sysi.Nact) + 1/2
-#     xpp = (np.linspace(-sysi.Nact/2, sysi.Nact/2-1, sysi.Nact) + 1/2) / (8.6/10.2) 
-#     ppx, ppy = np.meshgrid(xpp,xpp)
-    
-#     fourier_lim = fourier_sampling * int(np.round(xfp.max()/fourier_sampling))
-#     xfourier = np.arange(-fourier_lim-fourier_sampling/2, fourier_lim+fourier_sampling, fourier_sampling)
-#     fourier_x, fourier_y = np.meshgrid(xfourier, xfourier) 
-    
-#     # Select the x,y frequencies for the Fourier modes to calibrate the dark hole region
-#     fourier_grid_mask = ( (intp(xfourier, xfourier) * (((fourier_x!=0) + (fourier_y!=0)) > 0)) > 0 )
-    
-#     fxs = fourier_x.ravel()[fourier_grid_mask.ravel()]
-#     fys = fourier_y.ravel()[fourier_grid_mask.ravel()]
-#     sampled_fs = np.vstack((fxs, fys)).T
-    
-#     cos_modes = []
-#     sin_modes = []
-#     for f in sampled_fs:
-#         fx = f[0]/sysi.Nact
-#         fy = f[1]/sysi.Nact
-#         cos_modes.append( ( np.cos(2 * np.pi * (fx * ppx + fy * ppy)) * ensure_np_array(sysi.dm_mask) ).flatten() ) 
-#         sin_modes.append( ( np.sin(2 * np.pi * (fx * ppx + fy * ppy)) * ensure_np_array(sysi.dm_mask) ).flatten() )
-#     if use=='both' or use=='b':
-#         modes = cos_modes + sin_modes
-#     elif use=='cos' or use=='c':
-#         modes = cos_modes
-#     elif use=='sin' or use=='s':
-#         modes = sin_modes
-    
-#     if return_fs:
-#         return np.array(modes), sampled_fs
-#     else:
-#         return np.array(modes)
     
 def create_fourier_modes(dm_mask, npsf, psf_pixelscale_lamD, iwa, owa, fourier_sampling=0.75, 
                          which='both', 
@@ -320,6 +280,7 @@ def create_fourier_modes(dm_mask, npsf, psf_pixelscale_lamD, iwa, owa, fourier_s
                          plot=False):
     Nact = dm_mask.shape[0]
     nfg = int(xp.round(npsf * psf_pixelscale_lamD/fourier_sampling))
+    if nfg%2==1: nfg += 1
     yf, xf = (xp.indices((nfg, nfg)) - nfg//2 + 1/2) * fourier_sampling
     fourier_cm = create_annular_focal_plane_mask(nfg, fourier_sampling, iwa-fourier_sampling, owa+fourier_sampling, edge=iwa-fourier_sampling)
     ypp, xpp = (xp.indices((Nact, Nact)) - Nact//2 + 1/2)
@@ -341,74 +302,56 @@ def create_fourier_modes(dm_mask, npsf, psf_pixelscale_lamD, iwa, owa, fourier_s
     else:
         return xp.array(fourier_modes)
 
-def create_fourier_probes(sysi, control_mask, fourier_sampling=0.25, shift=(0,0), nprobes=2,
-                          use_weighting=False, plot=False): 
-    Nact = sysi.Nact
-    xfp = (xp.linspace(-sysi.npsf/2, sysi.npsf/2-1, sysi.npsf) + 1/2) * sysi.psf_pixelscale_lamD
-    fpx, fpy = xp.meshgrid(xfp,xfp)
-    
-    fourier_modes, fs = create_fourier_modes(sysi, control_mask*(fpx>0), 
-                                             fourier_sampling=fourier_sampling, 
-                                             use='both',
-                                             return_fs=True)
-    nfs = fourier_modes.shape[0]//2
+def create_fourier_probes(dm_mask, npsf, psf_pixelscale_lamD, iwa, owa, fourier_sampling=0.75, 
+                          shifts=None, nprobes=2,
+                          use_weighting=False, 
+                          plot=False): 
+    Nact = dm_mask.shape[0]
+    cos_modes, fs = create_fourier_modes(dm_mask, npsf, psf_pixelscale_lamD, iwa, owa, 
+                                        fourier_sampling=fourier_sampling, 
+                                        return_fs=True,
+                                        which='cos',
+                                        )
+    sin_modes = create_fourier_modes(dm_mask, npsf, psf_pixelscale_lamD, iwa, owa, 
+                                    fourier_sampling=fourier_sampling, 
+                                    which='sin',
+                                    )
+    nfs = fs.shape[0]
 
-    probes = np.zeros((nprobes, sysi.Nact, sysi.Nact))
+    probes = xp.zeros((nprobes, Nact, Nact))
     if use_weighting:
-        fmax = np.max(np.sqrt(fs[:,0]**2 + fs[:,1]**2))
-        # print(fmax)
+        fmax = xp.max(np.sqrt(fs[:,0]**2 + fs[:,1]**2))
         sum_cos = 0
         sum_sin = 0
         for i in range(nfs):
             f = np.sqrt(fs[i][0]**2 + fs[i][1]**2)
             weight = f/fmax
-            # print(f,weight)
-            sum_cos += weight*fourier_modes[i]
-            sum_sin += weight*fourier_modes[i+nfs]
-        sum_cos = sum_cos.reshape(Nact, Nact)
-        sum_sin = sum_sin.reshape(Nact, Nact)
+            sum_cos += weight*cos_modes[i]
+            sum_sin += weight*sin_modes[i]
+        sum_cos = sum_cos
+        sum_sin = sum_sin
     else:
-        sum_cos = fourier_modes[:nfs].sum(axis=0).reshape(Nact,Nact)
-        sum_sin = fourier_modes[nfs:].sum(axis=0).reshape(Nact,Nact)
+        sum_cos = cos_modes.sum(axis=0)
+        sum_sin = sin_modes.sum(axis=0)
     
     # nprobes=2 will give one probe that is purely the sum of cos and another that is the sum of sin
     cos_weights = np.linspace(1,0,nprobes)
     sin_weights = np.linspace(0,1,nprobes)
     
-    if not isinstance(shift, list):
-        shifts = [shift]*nprobes
-    else:
-        shifts = shift
+    shifts = [(0,0)]*nprobes if shifts is None else shifts
+
     for i in range(nprobes):
         probe = cos_weights[i]*sum_cos + sin_weights[i]*sum_sin
-        probe = scipy.ndimage.shift(probe, (shifts[i][1], shifts[i][0]))
-        probes[i] = probe/np.max(probe)
+        probe = _scipy.ndimage.shift(probe, (shifts[i][1], shifts[i][0]))
+        probes[i] = probe/xp.max(probe)
 
         if plot: 
-            imshows.imshow1(probes[i])
+            probe_response = xp.abs(xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(pad_or_crop(probes[i], 4*Nact)))))
+            imshow2(probes[i], probe_response, cmap1='viridis', pxscl2=1/4)
 
     return probes
 
-def fourier_mode(lambdaD_yx, rms=1, acts_per_D_yx=(34,34), Nact=34, phase=0):
-    '''
-    Allow linear combinations of sin/cos to rotate through the complex space
-    * phase = 0 -> pure cos
-    * phase = np.pi/4 -> sqrt(2) [cos + sin]
-    * phase = np.pi/2 -> pure sin
-    etc.
-    '''
-    idy, idx = np.indices((Nact, Nact)) - (34-1)/2.
-    
-    #cfactor = np.cos(phase)
-    #sfactor = np.sin(phase)
-    prefactor = rms * np.sqrt(2)
-    arg = 2*np.pi*(lambdaD_yx[0]/acts_per_D_yx[0]*idy + lambdaD_yx[1]/acts_per_D_yx[1]*idx)
-    
-    return prefactor * np.cos(arg + phase)
-
-def create_probe_poke_modes(Nact, 
-                            poke_indices,
-                            plot=False):
+def create_poke_probes(Nact, poke_indices, plot=False):
     Nprobes = len(poke_indices)
     probe_modes = np.zeros((Nprobes, Nact, Nact))
     for i in range(Nprobes):
@@ -537,6 +480,14 @@ def save_fits(fpath, data, header=None, ow=True, quiet=False):
     hdu = fits.PrimaryHDU(data=data, header=hdr)
     hdu.writeto(str(fpath), overwrite=ow) 
     if not quiet: print('Saved data to: ', str(fpath))
+
+def load_fits(fpath, header=False):
+    data = xp.array(fits.getdata(fpath))
+    if header:
+        hdr = fits.getheader(fpath)
+        return data, hdr
+    else:
+        return data
 
 # functions for saving python objects
 def save_pickle(fpath, data, quiet=False):
