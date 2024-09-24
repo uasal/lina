@@ -13,7 +13,7 @@ def compute_jacobian(M,
                      control_mask,
                      amp=1e-9,
                      plot_responses=True,
-                     return_all=False):
+                     ):
     Nmodes = calib_modes.shape[0]
     Nmask = int(control_mask.sum())
     jac = xp.zeros((2*Nmask, Nmodes))
@@ -161,8 +161,8 @@ def run(sysi,
                     cmap1='viridis', cmap2='viridis', 
                     pxscl3=sysi.psf_pixelscale_lamD, lognorm3=True, vmin3=1e-9)
             
-            if plot_sms:
-                sms_fig = sms(U, s, alpha2, efield_ri, Nmask, i)
+            # if plot_sms:
+            #     sms_fig = sms(U, s, alpha2, efield_ri, Nmask, i)
 
             if plot_radial_contrast:
                 utils.plot_radial_contrast(image, control_mask, sysi.psf_pixelscale_lamD, nbins=100)
