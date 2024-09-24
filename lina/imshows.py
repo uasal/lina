@@ -1,10 +1,5 @@
-from .math_module import xp, _scipy, cupy_avail
-if cupy_avail:
-    import cupy as cp
-else:
-    cp = False
-
-from . import utils
+from .math_module import xp, _scipy, cupy_avail, ensure_np_array
+import lina.utils as utils
 
 import numpy as np
 import scipy
@@ -31,10 +26,10 @@ def imshow1(arr,
             display_fig=True, return_fig=False):
     fig,ax = plt.subplots(nrows=1, ncols=1, figsize=figsize, dpi=dpi)
     
-    arr = utils.ensure_np_array(arr)
-    
     if npix is not None:
         arr = utils.pad_or_crop(arr, npix)
+
+    arr = ensure_np_array(arr)
     
     if pxscl is not None:
         if isinstance(pxscl, u.Quantity):
@@ -49,8 +44,8 @@ def imshow1(arr,
     
     im = ax.imshow(arr, cmap=cmap, norm=norm, extent=extent)
     if axlims is not None:
-        ax.set_xlim(axlims1[:2])
-        ax.set_ylim(axlims1[2:])
+        ax.set_xlim(axlims[:2])
+        ax.set_ylim(axlims[2:])
     ax.tick_params(axis='x', labelsize=9, rotation=30)
     ax.tick_params(axis='y', labelsize=9, rotation=30)
     ax.set_xlabel(xlabel)
@@ -85,13 +80,13 @@ def imshow2(arr1, arr2,
             figsize=(10,4), dpi=125, wspace=0.2):
     fig,ax = plt.subplots(nrows=1, ncols=2, figsize=figsize, dpi=dpi)
     
-    if cp and isinstance(arr1, cp.ndarray): arr1 = arr1.get()
-    if cp and isinstance(arr2, cp.ndarray): arr2 = arr2.get()
-    
     npix1, npix2 = (npix, npix) if npix is not None else (npix1, npix2)
-    if npix1 is not None: arr1 = pad_or_crop(arr1, npix1)
-    if npix2 is not None: arr2 = pad_or_crop(arr2, npix2)
+    if npix1 is not None: arr1 = utils.pad_or_crop(arr1, npix1)
+    if npix2 is not None: arr2 = utils.pad_or_crop(arr2, npix2)
     
+    arr1 = ensure_np_array(arr1)
+    arr2 = ensure_np_array(arr2)
+
     pxscl1, pxscl2 = (pxscl, pxscl) if pxscl is not None else (pxscl1, pxscl2)
     if pxscl1 is not None:
         if isinstance(pxscl1, u.Quantity):
@@ -180,14 +175,14 @@ def imshow3(arr1, arr2, arr3,
             figsize=(14,7), dpi=125, wspace=0.3):
     fig,ax = plt.subplots(nrows=1, ncols=3, figsize=figsize, dpi=dpi)
     
-    if cp and isinstance(arr1, cp.ndarray): arr1 = arr1.get()
-    if cp and isinstance(arr2, cp.ndarray): arr2 = arr2.get()
-    if cp and isinstance(arr3, cp.ndarray): arr3 = arr3.get()
-    
     npix1, npix2, npix3 = (npix, npix, npix) if npix is not None else (npix1, npix2, npix3)
-    if npix1 is not None: arr1 = pad_or_crop(arr1, npix1)
-    if npix2 is not None: arr2 = pad_or_crop(arr2, npix2)
-    if npix3 is not None: arr2 = pad_or_crop(arr3, npix3)
+    if npix1 is not None: arr1 = utils.pad_or_crop(arr1, npix1)
+    if npix2 is not None: arr2 = utils.pad_or_crop(arr2, npix2)
+    if npix3 is not None: arr3 = utils.pad_or_crop(arr3, npix3)
+
+    arr1 = ensure_np_array(arr1)
+    arr2 = ensure_np_array(arr2)
+    arr3 = ensure_np_array(arr3)
     
     pxscl1, pxscl2, pxscl3 = (pxscl, pxscl, pxscl) if pxscl is not None else (pxscl1, pxscl2, pxscl3)
     if pxscl1 is not None:

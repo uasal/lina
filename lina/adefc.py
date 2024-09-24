@@ -1,115 +1,146 @@
-import numpy as np
-try:
-    import cupy as cp
-    xp = cp
-except ImportError:
-    xp = np
-    
-import poppy
+from .math_module import xp, _scipy, ensure_np_array
+import lina.utils as utils
+from lina.imshows import imshow1, imshow2, imshow3
 
-import astropy.units as u
+import numpy as np
+from scipy.optimize import minimize
 import time
 import copy
-from IPython.display import display, clear_output
 
-import imshows
-from . import utils
-
-
-def compute_E_DM(actuators, forward_model, model_params):
-    E_DM = forward_model(model_params['actuators'], model_params['pupil'], model_params['wfe'], model_params['fpm'], model_params['lyot'],
-                         model_params['inf_matrix'], model_params['inf_pixelscale'],
-                         model_params['npix'], model_params['oversample'], Imax_ref=model_params['Imax_ref'])
-
-    return E_DM
-
-def cost_fun(actuators, I_tar_ratio=1/2, eta_00=1,):
-    '''
-    acts: the actuator vector we want to find an optimal solution for
-    I_tar_ratio: ratio for the desired target irradiance based on current integrated irradiance
-    eta_00: parameter that Scott understands more
-    E_ab: current electric-field estimate
-    '''
-    E_DM = compute_E_DM(actuators)[control_mask]
-    E_DZ = E_ab[control_mask] + E_DM
-    I_DZ = jnp.abs(E_DZ.conj().dot(E_DZ))
-    I_tar = I_tar_ratio * I_DZ
-    J = actuators.T.dot(actuators) + eta_00 * ((I_DZ - I_tar)/I_tar)**2
-    return J
-
-
-def run(sysi, 
-        estimation='perfect',
-        estimation_params=None,
-        control_mask, 
-        Imax_unocc=1,
-        efc_loop_gain=0.5, 
-        iterations=5, 
-        plot_all=False, 
-        plot_current=True,
-        plot_sms=True,
-        plot_radial_contrast=True):
-    # This function is only for running EFC simulations
-    print('Beginning closed-loop EFC simulation.')    
-    commands = []
-    efields = []
-    
-    start = time.time()
-    
-    U, s, V = xp.linalg.svd(jac, full_matrices=False)
-    alpha2 = xp.max( xp.diag( xp.real( jac.conj().T @ jac ) ) )
-    print('Max singular value squared:\t', s.max()**2)
-    print('alpha^2:\t\t\t', alpha2) 
+def run_pwp(I, 
+            M, 
+            current_acts, 
+            control_mask, 
+            probes, probe_amp, 
+            reg_cond=1e-3, 
+            plot=False,
+            plot_est=False,
+            ):
     
     Nmask = int(control_mask.sum())
-    
-    dm_mask = sysi.dm_mask.flatten()
-    if hasattr(sysi, 'bad_acts'):
-        dm_mask[sysi.bad_acts] = False
-    
-    dm_ref = sysi.get_dm()
-    dm_command = np.zeros((sysi.Nact, sysi.Nact)) 
-    print()
-    for i in range(iterations+1):
-        print('\tRunning iteration {:d}/{:d}.'.format(i, iterations))
-        sysi.set_dm(dm_ref + dm_command)
+    Nprobes = probes.shape[0]
 
-        if estimation=='perfect':
-            electric_field = sysi.calc_psf()
-        elif estimation=='pwp':
-            electric_field = estimation_fun(estiamtion_params)
-        
+    Ip = []
+    In = []
+    for i in range(Nprobes):
+        for s in [-1, 1]:
+            I.add_dm(s*probe_amp*probes[i])
+            coro_im = I.snap()
+            I.add_dm(-s*probe_amp*probes[i]) # remove probe from DM
 
-        commands.append(sysi.get_dm())
-        efields.append(copy.copy(electric_field))
-
-        efield_ri = xp.zeros(2*Ndh, dtype=control_matrix.dtype)
-        efield_ri[::2] = electric_field[control_mask].real
-        efield_ri[1::2] = electric_field[control_mask].imag
-        del_dm = -control_matrix.dot(efield_ri)
-        
-        del_dm = xp.array(utils.map_acts_to_dm(utils.ensure_np_array(del_dm), dm_mask))
-        dm_command += efc_loop_gain * utils.ensure_np_array(del_dm)
-
-        if plot_current or plot_all:
-
-            imshows.imshow2(commands[i], xp.abs(efields[i])**2, 
-                            'DM Command', 'Image: Iteration {:d}'.format(i), 
-                            cmap1='viridis', lognorm2=True, vmin2=1e-11)
-
-            if plot_sms:
-                sms_fig = utils.sms(U, s, alpha2, efield_ri, Nmask, Imax_unocc, i)
-
-            if plot_radial_contrast:
-                utils.plot_radial_contrast(xp.abs(efields[i])**2, control_mask, sysi.psf_pixelscale_lamD, nbins=100)
+            if s==-1: 
+                In.append(coro_im)
+            else: 
+                Ip.append(coro_im)
             
-            if not plot_all: clear_output(wait=True)
-    print('EFC completed in {:.3f} sec.'.format(time.time()-start))
-    
-    return commands, efields
+    E_probes = xp.zeros((probes.shape[0], 2*Nmask))
+    I_diff = xp.zeros((probes.shape[0], Nmask))
+    for i in range(Nprobes):
+        if i==0: 
+            E_nom = M.forward(current_acts, use_vortex=True, use_wfe=True)
+        E_with_probe = M.forward(xp.array(current_acts) + xp.array(probe_amp*probes[i])[M.dm_mask], use_vortex=True, use_wfe=True)
+        E_probe = E_with_probe - E_nom
 
-def build_adjoint_model():
+        if plot:
+            imshow3(xp.abs(E_probe), xp.angle(E_probe), Ip[i]-In[i], 
+                    f'Probe {i+1}: '+'$|E_{probe}|$', f'Probe {i+1}: '+r'$\angle E_{probe}$', 'Difference Image', 
+                    cmap2='twilight')
+            
+        E_probes[i, ::2] = E_probe[control_mask].real
+        E_probes[i, 1::2] = E_probe[control_mask].imag
+
+        # I_diff[i:(i+1), :] = (Ip[i] - In[i])[control_mask]
+        I_diff[i, :] = (Ip[i] - In[i])[control_mask]
     
-    return
+    # Use batch process to estimate each pixel individually
+    E_est = xp.zeros(Nmask, dtype=xp.complex128)
+    for i in range(Nmask):
+        delI = I_diff[:, i]
+        H = 4*xp.array([E_probes[:,2*i], E_probes[:,2*i + 1]]).T
+        Hinv = xp.linalg.pinv(H.T@H, reg_cond)@H.T
+    
+        est = Hinv.dot(delI)
+
+        E_est[i] = est[0] + 1j*est[1]
+        
+    E_est_2d = xp.zeros((I.npsf,I.npsf), dtype=xp.complex128)
+    E_est_2d[control_mask] = E_est
+
+    if plot or plot_est:
+        I_est = xp.abs(E_est_2d)**2
+        P_est = xp.angle(E_est_2d)
+        imshow2(I_est, P_est, 
+                'Estimated Intensity', 'Estimated Phase',
+                lognorm1=True, vmin1=xp.max(I_est)/1e4, 
+                cmap2='twilight',
+                pxscl=M.psf_pixelscale_lamD)
+    return E_est_2d
+
+def run(I, 
+        M, 
+        val_and_grad,
+        control_mask,
+        est_fun=None, est_params=None,
+        Nitr=3, 
+        reg_cond=1e-2,
+        bfgs_tol=1e-3,
+        bfgs_opts=None,
+        gain=0.5, 
+        all_ims=[], 
+        all_efs=[],
+        all_commands=[],
+        ):
+    
+    starting_itr = len(all_ims)
+
+    if len(all_commands)>0:
+        total_command = copy.copy(all_commands[-1])
+    else:
+        total_command = xp.zeros((M.Nact,M.Nact))
+    del_command = xp.zeros((M.Nact,M.Nact))
+    del_acts0 = np.zeros(M.Nacts)
+    for i in range(Nitr):
+        print('Running estimation algorithm ...')
+        I.subtract_dark = False
+        
+        if est_fun is not None and est_params is not None: 
+            E_ab = est_fun(I, M, ensure_np_array(total_command[M.dm_mask]), **est_params)
+        else:
+            E_ab = I.calc_wf()
+        
+        print('Computing EFC command with L-BFGS')
+        res = minimize(val_and_grad, 
+                       jac=True, 
+                       x0=del_acts0,
+                    #    args=(m, E_ab, reg_cond, E_target, E_model_nom), 
+                       args=(M, ensure_np_array(total_command[M.dm_mask]), E_ab, reg_cond, control_mask), 
+                       method='L-BFGS-B',
+                       tol=bfgs_tol,
+                       options=bfgs_opts,
+                       )
+
+        del_acts = gain * res.x
+        del_command[M.dm_mask] = del_acts
+        total_command += del_command
+
+        I.add_dm(del_command)
+        I.subtract_dark = True
+        image_ni = I.snap()
+        mean_ni = xp.mean(image_ni[control_mask])
+
+        all_ims.append(copy.copy(image_ni))
+        all_efs.append(copy.copy(E_ab))
+        all_commands.append(copy.copy(total_command))
+        
+        imshow3(del_command, total_command, image_ni, 
+                f'Iteration {starting_itr + i + 1:d}: $\delta$DM', 
+                'Total DM Command', 
+                f'Image\nMean NI = {mean_ni:.3e}',
+                cmap1='viridis', cmap2='viridis', 
+                vmin1=-xp.max(xp.abs(del_command)), vmax1=xp.max(xp.abs(del_command)),
+                vmin2=-xp.max(xp.abs(total_command)), vmax2=xp.max(xp.abs(total_command)),
+                pxscl3=I.psf_pixelscale_lamD, lognorm3=True, vmin3=1e-10)
+
+    return all_ims, all_efs, all_commands
 
 

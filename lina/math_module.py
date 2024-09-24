@@ -37,15 +37,7 @@ class scipy_backend:
 
         return getattr(self._srcmodule, key)
     
-try:
-    import cupy as cp
-    import cupyx.scipy
-#     cp.cuda.Device(0).compute_capability
-    cupy_avail = True
-except ImportError:
-    cupy_avail = False
-    
-xp = np_backend(cp) if cupy_avail else np_backend(np)
+xp = np_backend(cupy) if cupy_avail else np_backend(np)
 _scipy = scipy_backend(cupyx.scipy) if cupy_avail else scipy_backend(scipy)
 
 def update_np(module):
@@ -75,3 +67,6 @@ def ensure_np_array(arr):
         return arr.get()
     elif jax_avail and isinstance(arr, jax.numpy.ndarray):
         return np.asarray(arr)
+    
+
+    
