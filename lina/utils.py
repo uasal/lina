@@ -230,7 +230,7 @@ def create_circ_mask(h, w, center=None, radius=None):
 
 # Creating focal plane masks
 def create_annular_focal_plane_mask(npsf, psf_pixelscale, 
-                                    inner_radius, outer_radius, 
+                                    irad, orad,  
                                     edge=None,
                                     shift=(0,0), 
                                     rotation=0,
@@ -238,7 +238,7 @@ def create_annular_focal_plane_mask(npsf, psf_pixelscale,
     x = (xp.linspace(-npsf/2, npsf/2-1, npsf) + 1/2)*psf_pixelscale
     x,y = xp.meshgrid(x,x)
     r = xp.hypot(x, y)
-    mask = (r < outer_radius) * (r > inner_radius)
+    mask = (r > irad) * (r < orad)
     if edge is not None: mask *= (x > edge)
     
     mask = _scipy.ndimage.rotate(mask, rotation, reshape=False, order=0)
