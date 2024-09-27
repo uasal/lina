@@ -81,6 +81,7 @@ def run_model(M,
               reverse_dm_parity=False,
               plot=False, 
               plot_all=False,
+              return_coro_ims=False,
               ):
     """_summary_
 
@@ -106,10 +107,11 @@ def run_model(M,
     Nitr = time_series.shape[1]
     llowfsc_ims = xp.zeros((Nitr, M.nlocam, M.nlocam))
     llowfsc_commands = xp.zeros((Nitr, M.Nact, M.Nact))
+    if return_coro_ims: coro_ims = xp.zeros((Nitr, M.npsf, M.npsf))
 
     # prior to the first iteration, compute the initial image the first DM commands will be computed from
-    new_wfe = xp.sum( time_series[1:, 0, None, None] * wfe_modes, axis=0)
-    M.WFE = static_wfe * xp.exp(1j * 2*np.pi/M.wavelength_c.to_value(u.m) * new_wfe)
+    lo_wfe = xp.sum( time_series[1:, 0, None, None] * wfe_modes, axis=0)
+    M.setattr('WFE', static_wfe * xp.exp(1j * 2*np.pi/M.wavelength_c.to_value(u.m) * lo_wfe) ) 
 
     locam_im = M.snap_locam()
     del_im = locam_im - ref_im
@@ -118,8 +120,8 @@ def run_model(M,
     total_coeff = 0.0
     for i in range(Nitr-1):
         # apply the new wavefront for the current iteration
-        new_wfe = xp.sum( time_series[1:, i+1, None, None] * wfe_modes, axis=0)
-        M.WFE = static_wfe * xp.exp(1j * 2*np.pi/M.wavelength_c.to_value(u.m) * new_wfe)
+        lo_wfe = xp.sum( time_series[1:, i+1, None, None] * wfe_modes, axis=0)
+        M.setattr('WFE', static_wfe * xp.exp(1j * 2*np.pi/M.wavelength_c.to_value(u.m) * lo_wfe) )
 
         # compute the DM command with the image based on the time delayed wavefront
         modal_coeff = - gain * control_matrix.dot(del_im[control_mask]) 
@@ -129,27 +131,35 @@ def run_model(M,
         if reverse_dm_parity:
             del_dm_command = xp.rot90(xp.rot90(del_dm_command))
         total_command += del_dm_command / 2 # divide by 2 for reflection
-        M.set_dm(total_command)
+        M.add_dm(del_dm_command / 2)
 
         # compute the new LLOWFSC image to be used on the next iteration
         locam_im = M.snap_locam()
         del_im = locam_im - ref_im
         llowfsc_ims[i] = copy.copy(locam_im)
         llowfsc_commands[i] = copy.copy(total_command)
+        if return_coro_ims: 
+            coro_im = M.snap()
+            coro_ims[i] = copy.copy(coro_im)
 
         if plot or plot_all:
-            rms_wfe = xp.sqrt(xp.mean(xp.square( new_wfe[M.APMASK] )))
+            if return_coro_ims:
+                imshow3(locam_im, del_im, coro_im, 
+                        'LLOWFSC Image', 'Difference Image',
+                        cmap1='magma', cmap2='magma',
+                        lognorm3=True, vmin3=1e-9, 
+                        )
+            else: 
+                imshow2(locam_im, del_im,
+                        'LLOWFSC Image', 'Difference Image',
+                        cmap1='magma', cmap2='magma',
+                        )
+            rms_wfe = xp.sqrt(xp.mean(xp.square( lo_wfe[M.APMASK] )))
             pv_stroke = xp.max(total_command) - xp.min(total_command)
             rms_stroke = xp.sqrt(xp.mean(xp.square( total_command[M.dm_mask] )))
-
-            imshow2(locam_im, del_im, 
-                    'LLOWFSC Image', 'Difference Image',
-                    cmap1='magma', cmap2='magma',
-                    )
-            
             vmax_pup = 2*rms_wfe
             pupil_cmap = 'viridis'
-            imshow3(new_wfe, del_dm_command, total_command,
+            imshow3(lo_wfe, del_dm_command, total_command,
                     f'Current WFE: {rms_wfe:.2e}\nTime = {time_series[0][i+1]:.3f}s', 
                     'Computed DM Correction',
                     f'Total DM Command\nPV = {1e9*pv_stroke:.1f}nm, RMS = {1e9*rms_stroke:.1f}nm', 
@@ -158,8 +168,10 @@ def run_model(M,
                     )
             
             if not plot_all: clear_output(wait=True) 
-            
-    return llowfsc_ims, llowfsc_commands
+    if return_coro_ims:
+        return llowfsc_ims, llowfsc_commands, coro_ims
+    else:
+        return llowfsc_ims, llowfsc_commands
 
 
 

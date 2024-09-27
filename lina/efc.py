@@ -90,7 +90,7 @@ def calibrate(sysi,
     
     if plot:
         dm_responses = response_matrix[::2] + 1j*response_matrix[1::2]
-        dm_responses = dm_responses.dot(xp.array(calibration_modes))
+        dm_responses = dm_responses.dot(xp.array(calibration_modes.reshape(Nmodes, -1)))
         dm_response_map = xp.sqrt(xp.mean(xp.abs(dm_responses)**2, axis=0)).reshape(sysi.Nact, sysi.Nact)
         dm_response_map /= xp.max(dm_response_map)
         imshows.imshow1(dm_response_map, lognorm=True, vmin=1e-2)
@@ -120,6 +120,7 @@ def run(sysi,
     print('Beginning closed-loop EFC.')    
     start = time.time()
     calibration_modes = xp.array(calibration_modes)
+    Nmodes = calibration_modes.shape[0]
     Nmask = int(control_mask.sum())
     starting_itr = len(all_ims)
     if len(all_commands)>0:
@@ -141,7 +142,8 @@ def run(sysi,
         efield_ri[1::2] = electric_field[control_mask].imag
 
         modal_coeff = -control_matrix.dot(efield_ri)
-        del_command = calibration_modes.T.dot(modal_coeff).reshape(sysi.Nact,sysi.Nact)
+        # del_command = calibration_modes.T.dot(modal_coeff).reshape(sysi.Nact,sysi.Nact)
+        del_command = calibration_modes.reshape(Nmodes, -1).T.dot(modal_coeff).reshape(sysi.Nact,sysi.Nact)
         total_command = (1.0-leakage)*total_command + loop_gain*del_command
         sysi.set_dm(total_command)
 
