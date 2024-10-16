@@ -90,7 +90,7 @@ def run(I,
         all_efs=[],
         all_commands=[],
         ):
-    
+
     starting_itr = len(all_ims)
 
     if len(all_commands)>0:
@@ -141,6 +141,7 @@ def run(I,
                 vmin2=-xp.max(xp.abs(total_command)), vmax2=xp.max(xp.abs(total_command)),
                 pxscl3=I.psf_pixelscale_lamD, lognorm3=True, vmin3=1e-10)
 
+    
     return all_ims, all_efs, all_commands
 
 

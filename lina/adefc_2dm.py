@@ -98,6 +98,7 @@ def run(I,
         total_dm2 = copy.copy(all_commands[-1, 1])
     else:
         total_dm1 = xp.zeros((M.Nact,M.Nact))
+        total_dm2 = xp.zeros((M.Nact,M.Nact))
 
     del_dm1 = xp.zeros((M.Nact,M.Nact))
     del_dm2 = xp.zeros((M.Nact,M.Nact))
@@ -129,7 +130,7 @@ def run(I,
         total_dm2 += del_dm2
 
         I.add_dm1(del_dm1)
-        I.add_dm1(del_dm2)
+        I.add_dm2(del_dm2)
         image_ni = I.snap()
         mean_ni = xp.mean(image_ni[control_mask])
 

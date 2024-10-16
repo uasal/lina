@@ -7,35 +7,35 @@ import astropy.units as u
 import copy
 from IPython.display import display, clear_output
 
-# def calibrate(I, calib_modes, control_mask, amps=5e-9, plot=False):
-#     # time.sleep(2)
-#     Nmodes = calib_modes.shape[0]
-#     Nmask = int(control_mask.sum())
-#     if np.isscalar(amps):
-#         amps = [amps] * Nmodes
+def calibrate_without_fsm(I, control_mask, dm_modes, amps=5e-9, plot=False):
+    # time.sleep(2)
+    Nmask = int(control_mask.sum())
+    Nmodes = dm_modes.shape[0]
+    if np.isscalar(amps):
+        amps = [amps] * Nmodes
 
-#     responses = xp.zeros((Nmodes, Nmask))
-#     for i in range(Nmodes):
-#         mode = calib_modes[i]
-#         amp = amps[i]
+    responses = xp.zeros((Nmodes, Nmask))
+    for i in range(Nmodes):
+        amp = amps[i]
+        mode = dm_modes[i]
 
-#         I.add_dm(amp*mode)
-#         im_pos = I.snap_locam()
-#         I.add_dm(-2*amp*mode)
-#         im_neg = I.snap_locam()
-#         I.add_dm(amp*mode)
+        I.add_dm(amp*mode)
+        im_pos = I.snap_locam()
+        I.add_dm(-2*amp*mode)
+        im_neg = I.snap_locam()
+        I.add_dm(amp*mode)
 
-#         diff = im_pos - im_neg
-#         responses[i] = copy.copy(diff)[control_mask]/(2 * amp)
+        diff = im_pos - im_neg
+        responses[i] = copy.copy(diff)[control_mask]/(2 * amp)
 
-#         if plot:
-#             imshow3(amp*mode, im_pos, diff, f'Mode {i+1}', 'Absolute Image', 'Difference', cmap1='viridis')
+        if plot:
+            imshow3(amp*mode, im_pos, diff, f'Mode {i+1}', 'Absolute Image', 'Difference', cmap1='viridis')
 
-#     response_matrix = responses.T
+    response_matrix = responses.T
 
-#     return response_matrix
+    return response_matrix
 
-def calibrate(I, control_mask, amps=5e-9, dm_modes=None, plot=False):
+def calibrate_with_fsm(I, control_mask, dm_modes=None, amps=5e-9, plot=False):
     # time.sleep(2)
     Nmask = int(control_mask.sum())
     Nmodes = dm_modes.shape[0] + 2 if dm_modes is not None else 2
@@ -49,7 +49,7 @@ def calibrate(I, control_mask, amps=5e-9, dm_modes=None, plot=False):
         if i==0: # assumes this is the Tip mode so applies it to the FSM
             mode = I.TTM[0]
             amp_pv = amp / I.tt_pv_to_rms
-            amp_as = (np.arctan(amp_pv / I.fsm_beam_diam.to_value(u.m))*u.radian).to(u.arcsec) / 2 # divide by 2 for reflection
+            amp_as = (np.arctan(amp_pv / I.fsm_beam_diam.to_value(u.m))*u.radian).to(u.arcsec) 
             I.add_fsm(tip=amp_as, tilt=0*u.arcsec)
             im_pos = I.snap_locam()
             I.add_fsm(tip=-2*amp_as, tilt=0*u.arcsec)
@@ -58,7 +58,7 @@ def calibrate(I, control_mask, amps=5e-9, dm_modes=None, plot=False):
         elif i==1: # assumes this is the Tilt mode so applies it to the FSM
             mode = I.TTM[1]
             amp_pv = amp / I.tt_pv_to_rms
-            amp_as = (np.arctan(amp_pv / I.fsm_beam_diam.to_value(u.m))*u.radian).to(u.arcsec)  / 2 # divide by 2 for reflection
+            amp_as = (np.arctan(amp_pv / I.fsm_beam_diam.to_value(u.m))*u.radian).to(u.arcsec) 
             I.add_fsm(tip=0*u.arcsec, tilt=amp_as)
             im_pos = I.snap_locam()
             I.add_fsm(tip=0*u.arcsec, tilt=-2*amp_as)
@@ -82,16 +82,17 @@ def calibrate(I, control_mask, amps=5e-9, dm_modes=None, plot=False):
 
     return response_matrix
 
+
 def single_iteration(I,
-                    ref_im, 
-                    control_matrix, 
-                    control_modes,
-                    control_mask, 
-                    gain=1/2,
-                    thresh=0,
-                    plot=False,
-                    clear=False,
-                    ):
+                     ref_im, 
+                     control_matrix, 
+                     control_modes,
+                     control_mask, 
+                     gain=1/2,
+                     thresh=0,
+                     plot=False,
+                     clear=False,
+                     ):
 
     image = I.snap_locam()
     del_im = image - ref_im
@@ -123,12 +124,10 @@ def run_model(M,
               control_matrix, 
               time_series, 
               wfe_modes, 
-              dm_modes=None, 
+              dm_modes,
               gain=1/2,  
-              reverse_dm_parity=False,
               plot=False, 
               plot_all=False,
-              return_coro_ims=False,
               ):
     """_summary_
 
@@ -153,90 +152,70 @@ def run_model(M,
 
     Nitr = time_series.shape[1]
     llowfsc_ims = xp.zeros((Nitr, M.nlocam, M.nlocam))
-    llowfsc_commands = xp.zeros((Nitr, M.Nact, M.Nact))
-    if return_coro_ims: coro_ims = xp.zeros((Nitr, M.npsf, M.npsf))
-
-    # prior to the first iteration, compute the initial image the first DM commands will be computed from
-    lo_wfe = xp.sum( time_series[1:, 0, None, None] * wfe_modes, axis=0)
-    M.setattr('WFE', static_wfe * xp.exp(1j * 2*np.pi/M.wavelength_c.to_value(u.m) * lo_wfe) ) 
-
-    locam_im = M.snap_locam()
-    del_im = locam_im - ref_im
-    llowfsc_ims[0] = copy.copy(locam_im)
-    total_command = 0.0
-    total_coeff = 0.0
-    for i in range(Nitr-1):
-        # apply the new wavefront for the current iteration
-        lo_wfe = xp.sum( time_series[1:, i+1, None, None] * wfe_modes, axis=0)
-        M.setattr('WFE', static_wfe * xp.exp(1j * 2*np.pi/M.wavelength_c.to_value(u.m) * lo_wfe) )
-
-        # compute the DM command with the image based on the time delayed wavefront
-        modal_coeff = - gain * control_matrix.dot(del_im[control_mask]) 
-        total_coeff += modal_coeff
-
-        tt_coeff_rms = ensure_np_array(modal_coeff[:2])
-        tt_coeff_pv = tt_coeff_rms / M.tt_pv_to_rms
-        tt_coeff_as = (np.arctan(tt_coeff_pv / M.fsm_beam_diam.to_value(u.m))*u.radian).to(u.arcsec) / 2
-        M.add_fsm(tip=tt_coeff_as[0], tilt=tt_coeff_as[1])
-
-        if dm_modes is not None: # use the DM to correct all higher-order modes
+    diff_ims = xp.zeros((Nitr, M.nlocam, M.nlocam))
+    fsm_commands = xp.zeros((Nitr, 2))
+    coro_ims = xp.zeros((Nitr, M.npsf, M.npsf))
+    dm_commands = xp.zeros((Nitr, M.Nact, M.Nact))
+    injected_wfes = xp.zeros((Nitr, time_series[1:, 0].shape[0]))
+    
+    for i in range(Nitr):
+        if i==0:
+            tt_coeff_rms = xp.array([0,0])
+            del_dm_command = xp.zeros_like(M.DM.command)
+        else:
+            # compute the DM command with the image based on the time delayed wavefront
+            modal_coeff = - gain * control_matrix.dot(del_im[control_mask])
+            tt_coeff_rms = modal_coeff[:2]
             del_dm_command = xp.sum( modal_coeff[2:, None, None] * dm_modes, axis=0)
-            if reverse_dm_parity:
-                del_dm_command = xp.rot90(xp.rot90(del_dm_command))
-            total_command += del_dm_command / 2 # divide by 2 for reflection
-            M.add_dm(del_dm_command / 2)
+        # print(gain)
+        tt_coeff_pv = tt_coeff_rms / M.tt_pv_to_rms
+        tt_coeff_as = (np.arctan( ensure_np_array(tt_coeff_pv) / M.fsm_beam_diam.to_value(u.m))*u.radian).to(u.arcsec) / 2
+        M.add_fsm(tip=tt_coeff_as[0], tilt=tt_coeff_as[1])
+        M.add_dm(del_dm_command)
 
-        # compute the new LLOWFSC image to be used on the next iteration
+        # apply the new wavefront to simulate a time delay 
+        lo_wfe = xp.sum( time_series[1:, i, None, None] * wfe_modes, axis=0)
+        M.setattr('WFE', static_wfe * xp.exp(1j * 2*np.pi/M.wavelength_c.to_value(u.m) * lo_wfe) )
         locam_im = M.snap_locam()
+        coro_im = M.snap()
         del_im = locam_im - ref_im
+
         llowfsc_ims[i] = copy.copy(locam_im)
-        llowfsc_commands[i] = copy.copy(total_command)
-        if return_coro_ims: 
-            coro_im = M.snap()
-            coro_ims[i] = copy.copy(coro_im)
+        diff_ims[i] = copy.copy(del_im)
+        coro_ims[i] = copy.copy(coro_im)
+        fsm_commands[i] = copy.copy(M.fsm_rms)
+        dm_commands[i] = copy.copy(M.get_dm())
+        injected_wfes[i] = copy.copy(time_series[1:, i])
 
         if plot or plot_all:
-            if return_coro_ims:
-                imshow3(locam_im, del_im, coro_im, 
-                        'LLOWFSC Image', 'Difference Image',
-                        cmap1='magma', cmap2='magma',
-                        lognorm3=True, vmin3=1e-9, 
-                        )
-            else: 
-                imshow2(locam_im, del_im,
-                        'LLOWFSC Image', 'Difference Image',
-                        cmap1='magma', cmap2='magma',
-                        )
+            imshow3(locam_im, del_im, coro_im, 
+                    'LLOWFSC Image', 'Difference Image',
+                    cmap1='magma', cmap2='magma',
+                    lognorm3=True, vmin3=1e-9, )
             rms_wfe = xp.sqrt(xp.mean(xp.square( lo_wfe[M.APMASK] )))
             vmax_pup = 2*rms_wfe
             pupil_cmap = 'viridis'
-            # pv_stroke = xp.max(total_command) - xp.min(total_command)
-            # rms_stroke = xp.sqrt(xp.mean(xp.square( total_command[M.dm_mask] )))
-            if dm_modes is None: 
-                del_fsm = tt_coeff_rms[0] * M.TTM[0] + tt_coeff_rms[1] * M.TTM[1]
-                imshow3(lo_wfe, del_fsm, M.FSM,
-                        f'Current WFE: {rms_wfe:.2e}\nTime = {time_series[0][i+1]:.3f}s', 
-                        'Computed FSM correction', 
-                        # 'Computed DM Correction',
-                        # f'Total DM Command\nPV = {1e9*pv_stroke:.1f}nm, RMS = {1e9*rms_stroke:.1f}nm', 
-                        vmin1=-vmax_pup, vmax1=vmax_pup, 
-                        cmap1=pupil_cmap, cmap2=pupil_cmap, cmap3=pupil_cmap,
-                        )
-            else: 
-                imshow3(lo_wfe, M.FSM, M.get_dm(), 
-                        f'Current WFE: {rms_wfe:.2e}\nTime = {time_series[0][i+1]:.3f}s', 
-                        'Computed FSM correction', 
-                        # 'Computed DM Correction',
-                        # f'Total DM Command\nPV = {1e9*pv_stroke:.1f}nm, RMS = {1e9*rms_stroke:.1f}nm', 
-                        vmin1=-vmax_pup, vmax1=vmax_pup, 
-                        cmap1=pupil_cmap, cmap2=pupil_cmap, cmap3=pupil_cmap,
-                        )
+            imshow3(lo_wfe, M.FSM, M.get_dm(), 
+                    f'Current WFE: {rms_wfe:.2e}\nTime = {time_series[0][i]:.3f}s', 
+                    'LLOWFSC FSM Command', 'LLOWFSC DM Command',
+                    vmin1=-vmax_pup, vmax1=vmax_pup, 
+                    cmap1=pupil_cmap, cmap2=pupil_cmap, cmap3=pupil_cmap,
+                    )
             
-            if not plot_all: clear_output(wait=True) 
-    if return_coro_ims:
-        return llowfsc_ims, llowfsc_commands, coro_ims
-    else:
-        return llowfsc_ims, llowfsc_commands
+            if not plot_all: clear_output(wait=True)
+
+    sim_dict = {
+        'llowfsc_ims':llowfsc_ims,
+        'diff_ims':diff_ims, 
+        'injected_wfes':injected_wfes,
+        'llowfsc_ref':ref_im,
+        'wfe_modes':wfe_modes, 
+        'coro_ims':coro_ims,
+        'fsm_commands':fsm_commands,
+        'dm_commands':dm_commands,
+    }
+    
+    return sim_dict
 
 
 
