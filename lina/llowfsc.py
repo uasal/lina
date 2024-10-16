@@ -14,7 +14,10 @@ def calibrate_without_fsm(I, control_mask, dm_modes, amps=5e-9, plot=False):
     if np.isscalar(amps):
         amps = [amps] * Nmodes
 
-    responses = xp.zeros((Nmodes, Nmask))
+    if isinstance(control_mask, np.ndarray):
+        responses = np.zeros((Nmodes, Nmask))
+    else:
+        responses = xp.zeros((Nmodes, Nmask))
     for i in range(Nmodes):
         amp = amps[i]
         mode = dm_modes[i]
@@ -83,10 +86,13 @@ def calibrate_with_fsm(I, control_mask, dm_modes=None, amps=5e-9, plot=False):
     return response_matrix
 
 
+# def compute_del_ref_im(response_matrix, command):
+#     return
+
 def single_iteration(I,
                      ref_im, 
                      control_matrix, 
-                     control_modes,
+                     modal_matrix,
                      control_mask, 
                      gain=1/2,
                      thresh=0,
@@ -95,13 +101,14 @@ def single_iteration(I,
                      ):
 
     image = I.snap_locam()
+    # if update_ref:
     del_im = image - ref_im
 
     # compute the DM command with the image based on the time delayed wavefront
-    modal_coeff = control_matrix.dot(del_im[control_mask])
+    modal_coeff = -control_matrix.dot(del_im[control_mask])
     modal_coeff *= np.abs(modal_coeff) >= thresh
     modal_coeff *= gain
-    del_dm_command = -control_modes.dot(modal_coeff).reshape(I.Nact,I.Nact)
+    del_dm_command = modal_matrix.T.dot(modal_coeff).reshape(I.Nact,I.Nact)
     # if reverse_dm_parity: del_dm_correction = xp.rot90(xp.rot90(del_dm_correction))
     I.add_dm(del_dm_command)
 
