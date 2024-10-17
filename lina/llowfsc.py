@@ -85,32 +85,37 @@ def calibrate_with_fsm(I, control_mask, dm_modes=None, amps=5e-9, plot=False):
 
     return response_matrix
 
-
-# def compute_del_ref_im(response_matrix, command):
-#     return
+def update_locam_delta(response_matrix, modal_matrix, control_mask, dh_channel, locam_delta_channel,):
+    del_ref_im = np.zeros(locam_delta_channel.shape)
+    del_ref_im[control_mask] = response_matrix.dot(modal_matrix.dot(1e-6*dh_channel.grab_latest().ravel())/1024)
+    locam_delta_channel.write(del_ref_im)
+    return
 
 def single_iteration(I,
-                     ref_im, 
+                     locam_ref_channel,
+                     locam_delta_channel,  
                      control_matrix, 
                      modal_matrix,
                      control_mask, 
                      gain=1/2,
                      thresh=0,
+                     leakage=0.0, 
                      plot=False,
                      clear=False,
                      ):
 
     image = I.snap_locam()
-    # if update_ref:
-    del_im = image - ref_im
+    del_im = image - (locam_ref_channel.grab_latest() + locam_delta_channel.grab_latest())
 
     # compute the DM command with the image based on the time delayed wavefront
     modal_coeff = -control_matrix.dot(del_im[control_mask])
     modal_coeff *= np.abs(modal_coeff) >= thresh
     modal_coeff *= gain
     del_dm_command = modal_matrix.T.dot(modal_coeff).reshape(I.Nact,I.Nact)
-    # if reverse_dm_parity: del_dm_correction = xp.rot90(xp.rot90(del_dm_correction))
-    I.add_dm(del_dm_command)
+    # I.add_dm(del_dm_command)
+
+    total_command = (1-leakage) * ensure_np_array(I.get_dm()) + del_dm_command
+    I.set_dm(total_command)
 
     if plot:
         dm_command = I.get_dm()
