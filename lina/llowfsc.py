@@ -6,6 +6,7 @@ import numpy as np
 import astropy.units as u
 import copy
 from IPython.display import display, clear_output
+import time
 
 def calibrate_without_fsm(I, control_mask, dm_modes, amps=5e-9, plot=False):
     # time.sleep(2)
@@ -90,6 +91,24 @@ def update_locam_delta(response_matrix, modal_matrix, control_mask, dh_channel, 
     del_ref_im[control_mask] = response_matrix.dot(modal_matrix.dot(1e-6*dh_channel.grab_latest().ravel())/1024)
     locam_delta_channel.write(del_ref_im)
     return
+
+def inject_wfe(wfe_time_series, wfe_modes, freq, wfe_channel):
+    Nsamps = wfe_time_series.shape[1]
+    try:
+        print('Injecting WFE ...')
+        i = 0
+        while i<Nsamps+1:
+            if i==Nsamps:
+                i = 0
+            wfe = np.sum( wfe_time_series[:, i, None, None] * wfe_modes, axis=0)
+            wfe_channel.write(1e6 * wfe)
+            time.sleep(1/freq)
+            i += 1
+            # print(i)
+    except KeyboardInterrupt:
+        print('Stopped injecting WFE.')
+        wfe_channel.write(np.zeros(wfe_channel.shape))
+
 
 def single_iteration(I,
                      locam_ref_channel,

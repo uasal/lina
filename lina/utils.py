@@ -24,6 +24,13 @@ class Process(th.Timer):
 # time.sleep(5)
 # process.cancel()
 
+def make_grid(npix, pixelscale=1, half_shift=False):
+    if half_shift:
+        y,x = (xp.indices((npix, npix)) - npix//2 + 1/2)*pixelscale
+    else:
+        y,x = (xp.indices((npix, npix)) - npix//2)*pixelscale
+    return x,y
+
 def pad_or_crop( arr_in, npix ):
     n_arr_in = arr_in.shape[0]
     if n_arr_in == npix:
