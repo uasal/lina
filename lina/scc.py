@@ -44,22 +44,16 @@ def estimate_coherent(image, scc_reference, r_npix, shift,
 
     return E_est
 
-def estimate_incoherent(sysi, scc_ref_image, r_npix_c, 
-                        sci_image=None, dark_mask=None, plot=False, 
+def estimate_incoherent(sci_image, scc_reference, r_npix_c, 
+                        dark_mask=None, plot=False, 
                         **est_coherent_kwargs):
-    '''
-    r_npix_c:
-        radius of the central band in units of pixels
-    '''
-    if sci_image is None:
-        im = sysi.snap()
-    else:
-        im = sci_image
+    r_npix_c = r_npix_c
+    im = sci_image
     
     if dark_mask is not None:
         im *= dark_mask
         
-    estimate = estimate_coherent(sysi, sci_image = im, scc_ref_image = scc_ref_image, **est_coherent_kwargs)
+    estimate = estimate_coherent(image=im, scc_reference=scc_reference, **est_coherent_kwargs)
     
     im_fft = xp.fft.fftshift(xp.fft.fft2(im, norm='ortho'))
 
@@ -67,7 +61,7 @@ def estimate_incoherent(sysi, scc_ref_image, r_npix_c,
     x,y = xp.meshgrid(x,x)
 
     r = xp.sqrt(x**2 + y**2)
-    mask = r<r_npix_c
+    mask = r < r_npix_c
     im_fft_masked = mask*im_fft
     
     if plot:
@@ -75,7 +69,7 @@ def estimate_incoherent(sysi, scc_ref_image, r_npix_c,
     
     I_messy = xp.real(xp.fft.ifft2(xp.fft.ifftshift(im_fft_masked), norm='ortho'))
     
-    I_est = I_messy - scc_ref_image - ((xp.abs(estimate) ** 2) ** 2) / scc_ref_image
+    I_est = I_messy - scc_reference - ((xp.abs(estimate) ** 2) ** 2) / scc_reference
     
     # How to take care of negative values?
     I_est[I_est < 0] = 0
@@ -121,7 +115,8 @@ def build_jacobian(sysi,
 
             sysi.add_dm(utils.ensure_np_array(amp.get() * mode))
             command = sysi.get_dm()
-            wavefront = estimate_coherent(sysi, dark_mask=None, **scc_kwargs) / xp.sqrt(imnorm)
+            image = sysi.snap() / imnorm
+            wavefront = estimate_coherent(image=image, **scc_kwargs)
             response += amp * wavefront.ravel() / (2*xp.var(amps))
             sysi.add_dm(utils.ensure_np_array(-amp.get() * mode))
         
