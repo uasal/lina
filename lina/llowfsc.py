@@ -113,10 +113,10 @@ def inject_wfe(wfe_time_series, wfe_modes, freq, wfe_channel):
 def single_iteration(I,
                      locam_ref_channel,
                      locam_delta_channel,  
+                     gain_channel, 
                      control_matrix, 
                      modal_matrix,
                      control_mask, 
-                     gain=1/2,
                      thresh=0,
                      leakage=0.0, 
                      plot=False,
@@ -129,7 +129,7 @@ def single_iteration(I,
     # compute the DM command with the image based on the time delayed wavefront
     modal_coeff = -control_matrix.dot(del_im[control_mask])
     modal_coeff *= np.abs(modal_coeff) >= thresh
-    modal_coeff *= gain
+    modal_coeff *= gain_channel.grab_latest()[0]
     del_dm_command = modal_matrix.T.dot(modal_coeff).reshape(I.Nact,I.Nact)
     # I.add_dm(del_dm_command)
 
