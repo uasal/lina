@@ -7,6 +7,7 @@ import astropy.units as u
 import time
 import copy
 from IPython.display import display, clear_output
+import matplotlib.pyplot as plt
 
 # def take_measurement(system_interface, probe_cube, probe_amplitude, return_all=False, pca_modes=None):
 def take_measurement(sysi, probe_cube, probe_amplitude, pca_modes=None, plot=False):
@@ -209,6 +210,42 @@ def run_iteration(I,
                 pxscl3=I.psf_pixelscale_lamD, lognorm3=True, vmin3=1e-9)
         if clear: clear_output(wait=True)
 
+def compute_hadamard_scale_factors(had_modes, scale_exp=1/6, scale_thresh=4, iwa=2.5, owa=13, oversamp=4, plot=False):
+    Nact = had_modes.shape[1]
 
+    ft_modes = []
+    for i in range(had_modes.shape[0]):
+        had_mode = had_modes[i]
+        ft_modes.append(xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(utils.pad_or_crop(had_mode, Nact*oversamp)))))
+    mode_freqs = xp.abs(xp.array(ft_modes))
+
+    mode_freq_mask_pxscl = 1/oversamp
+    x = (xp.linspace(-Nact*oversamp//2, Nact*oversamp//2-1, Nact*oversamp) + 1/2)*mode_freq_mask_pxscl
+    x,y = xp.meshgrid(x,x)
+    r = xp.sqrt(x**2+y**2)
+    mode_freq_mask = (r>iwa)*(r<owa)
+    if plot: imshow1(mode_freq_mask, pxscl=1/oversamp)
+
+    sum_vals = []
+    max_vals = []
+    for i in range(had_modes.shape[0]):
+        sum_vals.append(xp.sum(mode_freqs[i, mode_freq_mask]))
+        max_vals.append(xp.max(mode_freqs[i, mode_freq_mask]**2))
+
+    biggest_sum = xp.max(xp.array(sum_vals))
+    biggest_max = xp.max(xp.array(max_vals))
+
+    scale_factors = []
+    for i in range(had_modes.shape[0]):
+        scale_factors.append((biggest_max/max_vals[i])**scale_exp)
+        # scale_factors.append((biggest_sum/sum_vals[i])**(1/2))
+    scale_factors = ensure_np_array(xp.array(scale_factors))
+
+    scale_factors[scale_factors>scale_thresh] = scale_thresh
+    if plot: 
+        plt.plot(scale_factors)
+        plt.show()
+
+    return scale_factors
 
 
