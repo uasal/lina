@@ -121,6 +121,13 @@ def interp_arr(arr, pixelscale, new_pixelscale, order=1):
     interped_arr = _scipy.ndimage.map_coordinates(arr, coords, order=order)
     return interped_arr
 
+def create_zernike_modes(pupil_mask, nmodes=15, remove_modes=0):
+    if remove_modes>0:
+        nmodes += remove_modes
+    zernikes = poppy.zernike.arbitrary_basis(pupil_mask, nterms=nmodes, outside=0)[remove_modes:]
+
+    return zernikes
+
 def generate_wfe(diam, 
                  npix=256, oversample=1, 
                  wavelength=500*u.nm,
@@ -183,13 +190,6 @@ def lstsq(modes, data):
     modes = modes[:, mask.ravel()].T  # transpose moves modes to columns, as needed for least squares fit
     c, *_ = xp.linalg.lstsq(modes, data, rcond=None)
     return c
-
-def create_zernike_modes(pupil_mask, nmodes=15, remove_modes=0):
-    if remove_modes>0:
-        nmodes += remove_modes
-    zernikes = poppy.zernike.arbitrary_basis(pupil_mask, nterms=nmodes, outside=0)[remove_modes:]
-
-    return zernikes
 
 def make_f(h=10, w=6, shift=(0,0), Nact=34):
     f_command = xp.zeros((Nact, Nact))

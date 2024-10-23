@@ -148,7 +148,7 @@ def single_iteration(I,
                 )
         if clear: clear_output(wait=True)
 
-def run_model(M, 
+def run_sim_with_fsm(M, 
               static_wfe, 
               ref_im, 
               control_mask, 
@@ -157,6 +157,8 @@ def run_model(M,
               wfe_modes, 
               dm_modes,
               gain=1/2,  
+              leakage=0.0,
+              dh_command=xp.zeros((34,34)),
               plot=False, 
               plot_all=False,
               ):
@@ -189,6 +191,8 @@ def run_model(M,
     dm_commands = xp.zeros((Nitr, M.Nact, M.Nact))
     injected_wfes = xp.zeros((Nitr, time_series[1:, 0].shape[0]))
     
+    total_fsm = 0.0
+    total_lo_dm = 0.0
     for i in range(Nitr):
         if i==0:
             tt_coeff_rms = xp.array([0,0])
@@ -198,11 +202,12 @@ def run_model(M,
             modal_coeff = - gain * control_matrix.dot(del_im[control_mask])
             tt_coeff_rms = modal_coeff[:2]
             del_dm_command = xp.sum( modal_coeff[2:, None, None] * dm_modes, axis=0)
-        # print(gain)
         tt_coeff_pv = tt_coeff_rms / M.tt_pv_to_rms
         tt_coeff_as = (np.arctan( ensure_np_array(tt_coeff_pv) / M.fsm_beam_diam.to_value(u.m))*u.radian).to(u.arcsec) / 2
         M.add_fsm(tip=tt_coeff_as[0], tilt=tt_coeff_as[1])
         M.add_dm(del_dm_command)
+        # total_fsm = 
+        # total_lo_dm = 
 
         # apply the new wavefront to simulate a time delay 
         lo_wfe = xp.sum( time_series[1:, i, None, None] * wfe_modes, axis=0)
@@ -243,6 +248,105 @@ def run_model(M,
         'wfe_modes':wfe_modes, 
         'coro_ims':coro_ims,
         'fsm_commands':fsm_commands,
+        'dm_commands':dm_commands,
+    }
+    
+    return sim_dict
+
+def run_sim(M, 
+              static_wfe, 
+              ref_im, 
+              control_mask, 
+              control_matrix, 
+              time_series, 
+              wfe_modes, 
+              dm_modes,
+              gain=1/2,  
+              leakage=0.0,
+              dh_command=xp.zeros((34,34)),
+              plot=False, 
+              plot_all=False,
+              sleep=None, 
+              ):
+    """_summary_
+
+    Parameters
+    ----------
+    sysi : _type_
+        _description_
+    ref_im : _type_
+        _description_
+    control_matrix : _type_
+        _description_
+    dm_modes : _type_
+        _description_
+    time_series_coeff : _type_
+        _description_
+    zernike_modes : _type_
+        _description_
+    plot : bool, optional
+        _description_, by default False
+    """
+    print(f'Starting LLOWFSC control-loop simulation')
+
+    Nitr = time_series.shape[1]
+    llowfsc_ims = xp.zeros((Nitr, M.nlocam, M.nlocam))
+    diff_ims = xp.zeros((Nitr, M.nlocam, M.nlocam))
+    coro_ims = xp.zeros((Nitr, M.npsf, M.npsf))
+    dm_commands = xp.zeros((Nitr, M.Nact, M.Nact))
+    injected_wfes = xp.zeros((Nitr, time_series[1:, 0].shape[0]))
+    
+    old_lo_command = 0.0
+    for i in range(Nitr):
+        if sleep is not None: time.sleep(sleep)
+        if i==0:
+            del_dm_command = xp.zeros_like(M.DM.command)
+        else:
+            # compute the DM command with the image based on the time delayed wavefront
+            modal_coeff = - gain * control_matrix.dot(del_im[control_mask])
+            del_dm_command = xp.sum( modal_coeff[:, None, None] * dm_modes, axis=0)
+        total_lo_dm = (1-leakage) * old_lo_command + del_dm_command
+        M.set_dm(dh_command + total_lo_dm)
+
+        # apply the new wavefront to simulate a time delay 
+        lo_wfe = xp.sum( time_series[1:, i, None, None] * wfe_modes, axis=0)
+        M.setattr('WFE', static_wfe * xp.exp(1j * 2*np.pi/M.wavelength_c.to_value(u.m) * lo_wfe) )
+        locam_im = M.snap_locam()
+        coro_im = M.snap()
+        del_im = locam_im - ref_im
+
+        llowfsc_ims[i] = copy.copy(locam_im)
+        diff_ims[i] = copy.copy(del_im)
+        coro_ims[i] = copy.copy(coro_im)
+        dm_commands[i] = copy.copy(M.get_dm())
+        injected_wfes[i] = copy.copy(time_series[1:, i])
+
+        old_lo_command = copy.copy(total_lo_dm)
+
+        if plot or plot_all:
+            imshow3(locam_im, control_mask*del_im, coro_im, 
+                    'LLOWFSC Image', 'Difference Image',
+                    cmap1='magma', cmap2='magma',
+                    lognorm3=True, vmin3=1e-9, )
+            rms_wfe = xp.sqrt(xp.mean(xp.square( lo_wfe[M.APMASK] )))
+            vmax_pup = 2*rms_wfe
+            pupil_cmap = 'viridis'
+            imshow3(lo_wfe, del_dm_command, M.get_dm(), 
+                    f'Current WFE: {rms_wfe:.2e}\nTime = {time_series[0][i]:.3f}s', 
+                    'LLOWFSC DM Command', 'Total DM Command',
+                    vmin1=-vmax_pup, vmax1=vmax_pup, 
+                    cmap1=pupil_cmap, cmap2=pupil_cmap, cmap3=pupil_cmap,
+                    )
+            
+            if not plot_all: clear_output(wait=True)
+
+    sim_dict = {
+        'llowfsc_ims':llowfsc_ims,
+        'diff_ims':diff_ims, 
+        'injected_wfes':injected_wfes,
+        'llowfsc_ref':ref_im,
+        'wfe_modes':wfe_modes, 
+        'coro_ims':coro_ims,
         'dm_commands':dm_commands,
     }
     
