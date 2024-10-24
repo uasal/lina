@@ -264,6 +264,7 @@ def run_sim(M,
               gain=1/2,  
               leakage=0.0,
               dh_command=xp.zeros((34,34)),
+              old_lo_command=0.0, 
               plot=False, 
               plot_all=False,
               sleep=None, 
@@ -293,10 +294,9 @@ def run_sim(M,
     llowfsc_ims = xp.zeros((Nitr, M.nlocam, M.nlocam))
     diff_ims = xp.zeros((Nitr, M.nlocam, M.nlocam))
     coro_ims = xp.zeros((Nitr, M.npsf, M.npsf))
-    dm_commands = xp.zeros((Nitr, M.Nact, M.Nact))
+    lo_commands = xp.zeros((Nitr, M.Nact, M.Nact))
     injected_wfes = xp.zeros((Nitr, time_series[1:, 0].shape[0]))
     
-    old_lo_command = 0.0
     for i in range(Nitr):
         if sleep is not None: time.sleep(sleep)
         if i==0:
@@ -318,7 +318,7 @@ def run_sim(M,
         llowfsc_ims[i] = copy.copy(locam_im)
         diff_ims[i] = copy.copy(del_im)
         coro_ims[i] = copy.copy(coro_im)
-        dm_commands[i] = copy.copy(M.get_dm())
+        lo_commands[i] = copy.copy(total_lo_dm)
         injected_wfes[i] = copy.copy(time_series[1:, i])
 
         old_lo_command = copy.copy(total_lo_dm)
@@ -347,7 +347,7 @@ def run_sim(M,
         'llowfsc_ref':ref_im,
         'wfe_modes':wfe_modes, 
         'coro_ims':coro_ims,
-        'dm_commands':dm_commands,
+        'lo_commands':lo_commands,
     }
     
     return sim_dict
