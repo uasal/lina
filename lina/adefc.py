@@ -37,8 +37,8 @@ def run_pwp(I,
     I_diff = xp.zeros((probes.shape[0], Nmask))
     for i in range(Nprobes):
         if i==0: 
-            E_nom = M.forward(current_acts, use_vortex=True, use_wfe=True)
-        E_with_probe = M.forward(xp.array(current_acts) + xp.array(probe_amp*probes[i])[M.dm_mask], use_vortex=True, use_wfe=True)
+            E_nom = M.forward(current_acts, use_vortex=True)
+        E_with_probe = M.forward(xp.array(current_acts) + xp.array(probe_amp*probes[i])[M.dm_mask], use_vortex=True)
         E_probe = E_with_probe - E_nom
 
         if plot:
@@ -48,8 +48,6 @@ def run_pwp(I,
             
         E_probes[i, ::2] = E_probe[control_mask].real
         E_probes[i, 1::2] = E_probe[control_mask].imag
-
-        # I_diff[i:(i+1), :] = (Ip[i] - In[i])[control_mask]
         I_diff[i, :] = (Ip[i] - In[i])[control_mask]
     
     # Use batch process to estimate each pixel individually
