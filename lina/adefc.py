@@ -69,7 +69,7 @@ def run_pwp(I,
         P_est = xp.angle(E_est_2d)
         imshow2(I_est, P_est, 
                 'Estimated Intensity', 'Estimated Phase',
-                lognorm1=True, vmin1=xp.max(I_est)/1e4, 
+                lognorm1=True, vmin1=xp.max(I_est)/1e3, 
                 cmap2='twilight',
                 pxscl=M.psf_pixelscale_lamD)
     return E_est_2d
@@ -84,6 +84,7 @@ def run(I,
         bfgs_tol=1e-3,
         bfgs_opts=None,
         gain=0.5, 
+        vmin=1e-9, 
         all_ims=[], 
         all_efs=[],
         all_commands=[],
@@ -122,6 +123,7 @@ def run(I,
         total_command += del_command
 
         I.add_dm(del_command)
+        I.return_ni = True
         I.subtract_dark = True
         image_ni = I.snap()
         mean_ni = xp.mean(image_ni[control_mask])
@@ -137,7 +139,7 @@ def run(I,
                 cmap1='viridis', cmap2='viridis', 
                 vmin1=-xp.max(xp.abs(del_command)), vmax1=xp.max(xp.abs(del_command)),
                 vmin2=-xp.max(xp.abs(total_command)), vmax2=xp.max(xp.abs(total_command)),
-                pxscl3=I.psf_pixelscale_lamD, lognorm3=True, vmin3=1e-10)
+                pxscl3=I.psf_pixelscale_lamD, lognorm3=True, vmin3=vmin)
 
     
     return all_ims, all_efs, all_commands
