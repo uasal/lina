@@ -19,6 +19,8 @@ def calibrate_without_fsm(I, control_mask, dm_modes, amps=5e-9, plot=False):
         responses = np.zeros((Nmodes, Nmask))
     else:
         responses = xp.zeros((Nmodes, Nmask))
+    
+    start = time.time()
     for i in range(Nmodes):
         amp = amps[i]
         mode = dm_modes[i]
@@ -31,9 +33,12 @@ def calibrate_without_fsm(I, control_mask, dm_modes, amps=5e-9, plot=False):
 
         diff = im_pos - im_neg
         responses[i] = copy.copy(diff)[control_mask]/(2 * amp)
-
+        
         if plot:
             imshow3(amp*mode, im_pos, diff, f'Mode {i+1}', 'Absolute Image', 'Difference', cmap1='viridis')
+        
+        print(f"\tCalibrated mode {i+1:d}/{dm_modes.shape[0]:d} in {time.time()-start:.3f}s", end='')
+        print("\r", end="")
 
     response_matrix = responses.T
 
