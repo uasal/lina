@@ -216,6 +216,15 @@ def make_ring(rad=15, Nact=34):
     ring = ring.astype(float)
     return ring
 
+def make_fourier_command(x_cpa=10, y_cpa=10, Nact=34):
+    # cpa = cycles per aperture
+    # max cpa must be Nact/2
+    if x_cpa>Nact/2 or y_cpa>Nact/2:
+        raise ValueError('The cycles per aperture is too high for the specified number of actuators.')
+    y,x = xp.indices((Nact, Nact)) - Nact//2
+    fourier_command = xp.cos(2*np.pi*(x_cpa*x + y_cpa*y)/Nact)
+    return fourier_command
+
 def map_acts_to_dm(actuators, dm_mask):
     Nact = dm_mask.shape[0]
     command = xp.zeros((Nact, Nact))
