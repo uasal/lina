@@ -20,6 +20,7 @@ def run_pwp(I,
     Nmask = int(control_mask.sum())
     Nprobes = probes.shape[0]
 
+    I.subtract_dark = False
     Ip = []
     In = []
     for i in range(Nprobes):
@@ -32,7 +33,7 @@ def run_pwp(I,
                 In.append(coro_im)
             else: 
                 Ip.append(coro_im)
-            
+        
     E_probes = xp.zeros((probes.shape[0], 2*Nmask))
     I_diff = xp.zeros((probes.shape[0], Nmask))
     for i in range(Nprobes):
@@ -40,15 +41,15 @@ def run_pwp(I,
             E_nom = M.forward(current_acts, use_vortex=True)
         E_with_probe = M.forward(xp.array(current_acts) + xp.array(probe_amp*probes[i])[M.dm_mask], use_vortex=True)
         E_probe = E_with_probe - E_nom
-
+        diff_im = Ip[i] - In[i]
         if plot:
-            imshow3(xp.abs(E_probe), xp.angle(E_probe), Ip[i]-In[i], 
-                    f'Probe {i+1}: '+'$|E_{probe}|$', f'Probe {i+1}: '+r'$\angle E_{probe}$', 'Difference Image', 
-                    cmap2='twilight')
+            imshow3(diff_im, xp.abs(E_probe), xp.angle(E_probe),
+                    'Difference Image', f'Probe {i+1}: '+'$|E_{probe}|$', f'Probe {i+1}: '+r'$\angle E_{probe}$', 
+                    cmap3='twilight')
             
         E_probes[i, ::2] = E_probe[control_mask].real
         E_probes[i, 1::2] = E_probe[control_mask].imag
-        I_diff[i, :] = (Ip[i] - In[i])[control_mask]
+        I_diff[i, :] = diff_im[control_mask]
     
     # Use batch process to estimate each pixel individually
     E_est = xp.zeros(Nmask, dtype=xp.complex128)
@@ -84,6 +85,7 @@ def run(I,
         bfgs_tol=1e-3,
         bfgs_opts=None,
         gain=0.5, 
+        leakage=0.0, 
         vmin=1e-9, 
         all_ims=[], 
         all_efs=[],
@@ -96,11 +98,11 @@ def run(I,
         total_command = copy.copy(all_commands[-1])
     else:
         total_command = xp.zeros((M.Nact,M.Nact))
+
     del_command = xp.zeros((M.Nact,M.Nact))
     del_acts0 = np.zeros(M.Nacts)
     for i in range(Nitr):
         print('Running estimation algorithm ...')
-        I.subtract_dark = False
         
         if est_fun is not None and est_params is not None: 
             E_ab = est_fun(I, M, ensure_np_array(total_command[M.dm_mask]), **est_params)
@@ -111,7 +113,6 @@ def run(I,
         res = minimize(val_and_grad, 
                        jac=True, 
                        x0=del_acts0,
-                    #    args=(m, E_ab, reg_cond, E_target, E_model_nom), 
                        args=(M, ensure_np_array(total_command[M.dm_mask]), E_ab, reg_cond, control_mask), 
                        method='L-BFGS-B',
                        tol=bfgs_tol,
@@ -120,9 +121,11 @@ def run(I,
 
         del_acts = gain * res.x
         del_command[M.dm_mask] = del_acts
-        total_command += del_command
+        total_command = (1-leakage)*total_command + del_command
 
-        I.add_dm(del_command)
+        # I.add_dm(del_command)
+        I.set_dm(total_command)
+
         I.return_ni = True
         I.subtract_dark = True
         image_ni = I.snap()
