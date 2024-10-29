@@ -97,16 +97,15 @@ def rotate_arr(arr, rotation, reshape=False, order=1):
 
 def interp_arr(arr, pixelscale, new_pixelscale, order=1):
     Nold = arr.shape[0]
-    old_xmax = pixelscale * Nold/2
+    old_xmax = pixelscale * (Nold/2)
+    Nnew = 2*int(np.round(old_xmax/new_pixelscale))
+    new_xmax = new_pixelscale * (Nnew/2)
 
     x,y = xp.ogrid[-old_xmax:old_xmax - pixelscale:Nold*1j,
                    -old_xmax:old_xmax - pixelscale:Nold*1j]
 
-    Nnew = int(np.ceil(2*old_xmax/new_pixelscale)) - 1
-    new_xmax = new_pixelscale * Nnew/2
-
     newx,newy = xp.mgrid[-new_xmax:new_xmax-new_pixelscale:Nnew*1j,
-                            -new_xmax:new_xmax-new_pixelscale:Nnew*1j]
+                         -new_xmax:new_xmax-new_pixelscale:Nnew*1j]
     
     x0 = x[0,0]
     y0 = y[0,0]
@@ -209,10 +208,10 @@ def make_f(h=10, w=6, shift=(0,0), Nact=34):
     f_command[mid_row,cols] = 1
     return f_command
 
-def make_ring(rad=15, Nact=34):
+def make_ring(rad=15, Nact=34, thresh=1/2):
     y,x = (xp.indices((Nact, Nact)) - Nact//2 + 1/2)
     r = xp.sqrt(x**2 + y**2)
-    ring = (rad-1/2<r) * (r < rad+1/2)
+    ring = (rad-thresh<r) * (r < rad+thresh)
     ring = ring.astype(float)
     return ring
 
@@ -224,6 +223,16 @@ def make_fourier_command(x_cpa=10, y_cpa=10, Nact=34):
     y,x = xp.indices((Nact, Nact)) - Nact//2
     fourier_command = xp.cos(2*np.pi*(x_cpa*x + y_cpa*y)/Nact)
     return fourier_command
+
+def make_cross_command(xc=[0], yc=[0], Nact=34):
+    y,x = (xp.indices((Nact, Nact)) - Nact//2 + 1/2)
+    cross = xp.zeros((Nact,Nact))
+    for i in range(len(xc)):
+        cross[(xc[i]-0.5<=x) & (x<xc[i]+0.5)] = 1
+        cross[(yc[i]-0.5<=y) & (y<yc[i]+0.5)] = 1
+    # cross
+    return cross
+
 
 def map_acts_to_dm(actuators, dm_mask):
     Nact = dm_mask.shape[0]
