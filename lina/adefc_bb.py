@@ -1,84 +1,54 @@
 from .math_module import xp, _scipy, ensure_np_array
 import lina.utils as utils
 from lina.imshows import imshow1, imshow2, imshow3
+import lina.adefc as adefc
 
 import numpy as np
 from scipy.optimize import minimize
 import time
 import copy
 
-def run_pwp(I, 
-            M, 
-            current_acts, 
-            control_mask, 
-            probes, probe_amp, 
-            reg_cond=1e-3, 
-            plot=False,
-            plot_est=False,
-            ):
+def calc_wfs(I, bandpasses, control_mask, plot=False):
+    Nbps = bandpasses.shape[0]
+    Nwaves_per_bp = bandpasses.shape[1]
+    E_abs = xp.zeros((Nbps, I.npsf, I.npsf), dtype=xp.complex128)
+    for i in range(Nbps):
+        E_abs[i] = I.calc_wf(wave=bandpasses[i, Nwaves_per_bp//2]) * control_mask
+        if plot: imshow2(xp.abs(E_abs[i])**2, xp.angle(E_abs[i])*control_mask, lognorm1=True, cmap2='twilight')
+
+    return E_abs
+
+def run_pwp_bb(I, 
+                M, 
+                current_acts, 
+                control_mask, 
+                probes, probe_amp,
+                bandpasses, 
+                reg_cond=1e-3,
+                plot=False,
+                plot_est=False,
+                ):
     
-    Nmask = int(control_mask.sum())
-    Nprobes = probes.shape[0]
+    Nbps = bandpasses.shape[0]
+    Nwaves_per_bp = bandpasses.shape[1]
 
-    I.subtract_dark = False
-    Ip = []
-    In = []
-    for i in range(Nprobes):
-        for s in [-1, 1]:
-            I.add_dm(s*probe_amp*probes[i])
-            coro_im = I.snap()
-            I.add_dm(-s*probe_amp*probes[i]) # remove probe from DM
+    E_ests = xp.zeros((Nbps, I.npsf, I.npsf))
+    for i in range(Nbps):
+        I.setattr('waves', bandpasses[i])
+        M.setattr('wavelength', bandpasses[i, Nwaves_per_bp//2]) 
+        E_est_mono = adefc.run_pwp(I, M, current_acts, control_mask, probes, probe_amp, reg_cond, plot=plot, plot_est=plot_est)
+        E_ests[i] = copy.copy(E_est_mono)
 
-            if s==-1: 
-                In.append(coro_im)
-            else: 
-                Ip.append(coro_im)
-        
-    E_probes = xp.zeros((probes.shape[0], 2*Nmask))
-    I_diff = xp.zeros((probes.shape[0], Nmask))
-    for i in range(Nprobes):
-        if i==0: 
-            E_nom = M.forward(current_acts, use_vortex=True)
-        E_with_probe = M.forward(xp.array(current_acts) + xp.array(probe_amp*probes[i])[M.dm_mask], use_vortex=True)
-        E_probe = E_with_probe - E_nom
-        diff_im = Ip[i] - In[i]
-        if plot:
-            imshow3(diff_im, xp.abs(E_probe), xp.angle(E_probe),
-                    'Difference Image', f'Probe {i+1}: '+'$|E_{probe}|$', f'Probe {i+1}: '+r'$\angle E_{probe}$', 
-                    cmap3='twilight')
-            
-        E_probes[i, ::2] = E_probe[control_mask].real
-        E_probes[i, 1::2] = E_probe[control_mask].imag
-        I_diff[i, :] = diff_im[control_mask]
-    
-    # Use batch process to estimate each pixel individually
-    E_est = xp.zeros(Nmask, dtype=xp.complex128)
-    for i in range(Nmask):
-        delI = I_diff[:, i]
-        H = 4*xp.array([E_probes[:,2*i], E_probes[:,2*i + 1]]).T
-        Hinv = xp.linalg.pinv(H.T@H, reg_cond)@H.T
-    
-        est = Hinv.dot(delI)
+    I.setattr('waves', bandpasses.flatten()) # reset the wavelengths of I to the full bandpass
+    M.setattr('wavelength', M.wavelength_c)
 
-        E_est[i] = est[0] + 1j*est[1]
-        
-    E_est_2d = xp.zeros((I.npsf,I.npsf), dtype=xp.complex128)
-    E_est_2d[control_mask] = E_est
-
-    if plot or plot_est:
-        I_est = xp.abs(E_est_2d)**2
-        P_est = xp.angle(E_est_2d)
-        imshow2(I_est, P_est, 
-                'Estimated Intensity', 'Estimated Phase',
-                lognorm1=True, vmin1=xp.max(I_est)/1e3, 
-                cmap2='twilight',
-                pxscl=M.psf_pixelscale_lamD)
-    return E_est_2d
+    return E_ests
 
 def run(I, 
         M, 
-        val_and_grad,
+        val_and_grad_bb,
         control_mask,
+        bandpasses, 
         data,
         pwp_params=None,
         Nitr=3, 
@@ -90,28 +60,35 @@ def run(I,
         vmin=1e-9, 
         ):
 
+    Nbps = bandpasses.shape[0]
+    Nwaves_per_bp = bandpasses.shape[1]
+    est_waves = bandpasses[:, Nwaves_per_bp//2]
+
     starting_itr = len(data['images'])
     if len(data['commands'])>0:
         total_command = copy.copy(data['commands'][-1])
     else:
         total_command = xp.zeros((M.Nact,M.Nact))
-
+    
     del_command = xp.zeros((M.Nact,M.Nact))
     del_acts0 = np.zeros(M.Nacts)
     for i in range(Nitr):
         print('Running estimation algorithm ...')
         
         if pwp_params is not None: 
-            E_ab = run_pwp(I, M, ensure_np_array(total_command[M.dm_mask]), **pwp_params)
+            E_abs = run_pwp_bb(I, M, ensure_np_array(total_command[M.dm_mask]), **pwp_params)
         else:
-            E_ab = I.calc_wf()
-        
+            E_abs = calc_wfs(I, bandpasses, control_mask, plot=0)
+            # print(I.wavelength)
+        print(E_abs.shape)
+        print(est_waves)
         print('Computing EFC command with L-BFGS')
         current_acts = ensure_np_array(total_command[M.dm_mask])
-        res = minimize(val_and_grad, 
+        res = minimize(val_and_grad_bb, 
                        jac=True, 
                        x0=del_acts0,
-                       args=(M, current_acts, E_ab, reg_cond, control_mask), 
+                       args=(M, current_acts, E_abs, reg_cond, control_mask, est_waves), 
+                       #  del_acts, M, actuators, E_abs, r_cond, control_mask, waves, verbose=False, plot=False, fancy_plot=False
                        method='L-BFGS-B',
                        tol=bfgs_tol,
                        options=bfgs_opts,
@@ -126,11 +103,12 @@ def run(I,
 
         I.return_ni = True
         I.subtract_dark = True
+        I.waves = bandpasses.flatten()
         image_ni = I.snap()
         mean_ni = xp.mean(image_ni[control_mask])
 
         data['images'].append(copy.copy(image_ni))
-        data['efields'].append(copy.copy(E_ab))
+        data['efields'].append(copy.copy(E_abs))
         data['commands'].append(copy.copy(total_command))
         data['del_commands'].append(copy.copy(del_command))
         data['bfgs_tols'].append(bfgs_tol)
@@ -145,7 +123,6 @@ def run(I,
                 vmin2=-xp.max(xp.abs(total_command)), vmax2=xp.max(xp.abs(total_command)),
                 pxscl3=I.psf_pixelscale_lamD, lognorm3=True, vmin3=vmin)
 
-    
     return data
 
 import matplotlib.pyplot as plt
