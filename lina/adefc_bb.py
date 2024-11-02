@@ -8,12 +8,12 @@ from scipy.optimize import minimize
 import time
 import copy
 
-def calc_wfs(I, bandpasses, control_mask, plot=False):
-    Nbps = bandpasses.shape[0]
-    Nwaves_per_bp = bandpasses.shape[1]
-    E_abs = xp.zeros((Nbps, I.npsf, I.npsf), dtype=xp.complex128)
-    for i in range(Nbps):
-        E_abs[i] = I.calc_wf(wave=bandpasses[i, Nwaves_per_bp//2]) * control_mask
+def calc_wfs(I, waves, control_mask, plot=False):
+    Nwaves = len(waves)
+    E_abs = xp.zeros((Nwaves, I.npsf, I.npsf), dtype=xp.complex128)
+    for i in range(Nwaves):
+        wavelength = waves[i]
+        E_abs[i] = I.calc_wf(wavelength=wavelength) * control_mask
         if plot: imshow2(xp.abs(E_abs[i])**2, xp.angle(E_abs[i])*control_mask, lognorm1=True, cmap2='twilight')
 
     return E_abs
@@ -78,17 +78,16 @@ def run(I,
         if pwp_params is not None: 
             E_abs = run_pwp_bb(I, M, ensure_np_array(total_command[M.dm_mask]), **pwp_params)
         else:
-            E_abs = calc_wfs(I, bandpasses, control_mask, plot=0)
-            # print(I.wavelength)
-        print(E_abs.shape)
-        print(est_waves)
+            E_abs = calc_wfs(I, est_waves, control_mask, plot=0)
+
+        # print(E_abs.shape)
+        # print(est_waves)
         print('Computing EFC command with L-BFGS')
         current_acts = ensure_np_array(total_command[M.dm_mask])
         res = minimize(val_and_grad_bb, 
                        jac=True, 
                        x0=del_acts0,
-                       args=(M, current_acts, E_abs, reg_cond, control_mask, est_waves), 
-                       #  del_acts, M, actuators, E_abs, r_cond, control_mask, waves, verbose=False, plot=False, fancy_plot=False
+                       args=(M, current_acts, E_abs, control_mask, est_waves, reg_cond, False, False, False), 
                        method='L-BFGS-B',
                        tol=bfgs_tol,
                        options=bfgs_opts,
@@ -121,7 +120,7 @@ def run(I,
                 cmap1='viridis', cmap2='viridis', 
                 vmin1=-xp.max(xp.abs(del_command)), vmax1=xp.max(xp.abs(del_command)),
                 vmin2=-xp.max(xp.abs(total_command)), vmax2=xp.max(xp.abs(total_command)),
-                pxscl3=I.psf_pixelscale_lamD, lognorm3=True, vmin3=vmin)
+                pxscl3=I.psf_pixelscale_lamDc, lognorm3=True, vmin3=vmin)
 
     return data
 
