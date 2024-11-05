@@ -145,7 +145,6 @@ def run(I,
                 vmin2=-xp.max(xp.abs(total_command)), vmax2=xp.max(xp.abs(total_command)),
                 pxscl3=I.psf_pixelscale_lamD, lognorm3=True, vmin3=vmin)
 
-    
     return data
 
 import matplotlib.pyplot as plt
