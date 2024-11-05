@@ -54,13 +54,16 @@ def calibrate_with_fsm(I, control_mask, dm_modes=None, amps=5e-9, plot=False):
     Nmodes = dm_modes.shape[0] + 2 if dm_modes is not None else 2
     if np.isscalar(amps):
         amps = [amps] * Nmodes
+    
+    pupil_mask = utils.create_circ_mask(500, 500, radius=250)
+    TTM = utils.create_zernike_modes(pupil_mask, nmodes=2, remove_modes=1)
 
     responses = xp.zeros((Nmodes, Nmask))
     for i in range(Nmodes):
         amp = amps[i]
 
         if i==0: # assumes this is the Tip mode so applies it to the FSM
-            mode = I.TTM[0]
+            mode = TTM[0]
             amp_pv = amp / I.tt_pv_to_rms
             amp_as = (np.arctan(amp_pv / I.fsm_beam_diam.to_value(u.m))*u.radian).to(u.arcsec) 
             I.add_fsm(tip=amp_as, tilt=0*u.arcsec)
@@ -69,7 +72,7 @@ def calibrate_with_fsm(I, control_mask, dm_modes=None, amps=5e-9, plot=False):
             im_neg = I.snap_locam()
             I.add_fsm(tip=amp_as, tilt=0*u.arcsec)
         elif i==1: # assumes this is the Tilt mode so applies it to the FSM
-            mode = I.TTM[1]
+            mode = TTM[1]
             amp_pv = amp / I.tt_pv_to_rms
             amp_as = (np.arctan(amp_pv / I.fsm_beam_diam.to_value(u.m))*u.radian).to(u.arcsec) 
             I.add_fsm(tip=0*u.arcsec, tilt=amp_as)
@@ -160,7 +163,8 @@ def single_iteration(
 
 def run_sim_with_fsm(
     M, 
-    static_wfe, 
+    static_amp,
+    static_opd, 
     ref_im, 
     control_mask, 
     control_matrix, 
@@ -196,8 +200,6 @@ def run_sim_with_fsm(
     plot : bool, optional
         _description_, by default False
     """
-    print(f'Starting LLOWFSC control-loop simulation')
-
     Nitr = time_series.shape[1]
     llowfsc_ims = xp.zeros((Nitr, M.nlocam, M.nlocam))
     diff_ims = xp.zeros((Nitr, M.nlocam, M.nlocam))
@@ -211,11 +213,11 @@ def run_sim_with_fsm(
     # total_fsm_command = old_fsm_command
     # total_lo_command = old_lo_command
     total_fsm_command = xp.zeros(2) if 'fsm_commands' not in data_dict else data_dict['fsm_commands'][-1]
-    total_lo_command = xp.zeros((34,34)) if 'lo_commands' not in data_dict else data_dict['lo_commands'][-1]
+    total_lo_command = xp.zeros((M.Nact, M.Nact)) if 'lo_commands' not in data_dict else data_dict['lo_commands'][-1]
     for i in range(Nitr):
         if i==0:
             del_fsm_command_rms = xp.zeros(2)
-            del_dm_command = xp.zeros_like(M.DM.command)
+            del_dm_command = xp.zeros((M.Nact, M.Nact))
         else:
             # compute the DM command with the image based on the time delayed wavefront
             modal_coeff = - gain * control_matrix.dot(del_im[control_mask])
@@ -232,10 +234,11 @@ def run_sim_with_fsm(
 
         # apply the new wavefront to simulate a time delay 
         lo_wfe = xp.sum( time_series[1:, i, None, None] * wfe_modes, axis=0)
-        M.setattr('WFE', static_wfe * xp.exp(1j * 2*np.pi/M.wavelength_c.to_value(u.m) * lo_wfe) )
+        M.setattr('AMP', static_amp )
+        M.setattr('OPD', static_opd + lo_wfe) 
         locam_im = M.snap_locam()
         coro_im = M.snap()
-        del_im = locam_im - ref_im
+        del_im = control_mask * (locam_im - ref_im)
 
         llowfsc_ims[i] = copy.copy(locam_im)
         diff_ims[i] = copy.copy(del_im)
@@ -274,7 +277,7 @@ def run_sim_with_fsm(
             cax = divider.append_axes("right", size="4%", pad=0.075)
             cbar = fig.colorbar(im4, cax=cax)
 
-            im5 = ax[1,1].imshow(ensure_np_array(M.FSM), norm=Normalize(), cmap='viridis',)
+            im5 = ax[1,1].imshow(ensure_np_array(M.getattr('FSM')), norm=Normalize(), cmap='viridis',)
             ax[1,1].set_title(f'FSM Command', fontsize=14)
             divider = make_axes_locatable(ax[1,1])
             cax = divider.append_axes("right", size="4%", pad=0.075)
@@ -291,7 +294,7 @@ def run_sim_with_fsm(
 
             if not plot_all: clear_output(wait=True)
         else:
-            print(f"\tRan iteration {i+1:d} in {time.time()-start:.3f}s", end='')
+            print(f"\tLLOWFSC running iteration {i+1:d} in {time.time()-start:.3f}s", end='')
             print("\r", end="")
 
     if 'llowfsc_ims' in data_dict: data_dict['llowfsc_ims'] = xp.concatenate([data_dict['llowfsc_ims'], llowfsc_ims])
