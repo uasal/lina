@@ -174,8 +174,6 @@ def run_sim_with_fsm(
     gain=1/2,  
     leakage=0.0,
     dh_command=xp.zeros((34,34)),
-    # old_fsm_command=xp.zeros(2),
-    # old_lo_command=xp.zeros((34,34)),
     data_dict={},
     plot=False, 
     plot_all=False,
@@ -309,8 +307,12 @@ def run_sim_with_fsm(
     else: data_dict.update({'fsm_commands':fsm_commands})
     if 'lo_commands' in data_dict: data_dict['lo_commands'] = xp.concatenate([data_dict['lo_commands'], lo_commands])
     else: data_dict.update({'lo_commands':lo_commands})
-    if '' in data_dict: data_dict['dh_commands'] = xp.concatenate([data_dict['dh_commands'], xp.array([dh_command])])
+    if 'dh_commands' in data_dict: data_dict['dh_commands'] = xp.concatenate([data_dict['dh_commands'], xp.array([dh_command])])
     else: data_dict.update({'dh_commands':xp.array([dh_command])})
+    if 'gains' in data_dict: data_dict['gains'].append(gain)
+    else: data_dict.update({'gains':[gain]})
+    if 'leakages' in data_dict: data_dict['leakages'].append(leakage)
+    else: data_dict.update({'leakages':[leakage]})
     
     return data_dict
 
