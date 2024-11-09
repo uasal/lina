@@ -9,7 +9,6 @@ import copy
 
 def run_pwp(I, 
             M, 
-            current_acts, 
             control_mask, 
             probes, probe_amp, 
             reg_cond=1e-3, 
@@ -19,6 +18,8 @@ def run_pwp(I,
     
     Nmask = int(control_mask.sum())
     Nprobes = probes.shape[0]
+
+    current_acts = I.get_dm()[M.dm_mask]
 
     I.subtract_dark = False
     Ip = []
@@ -91,37 +92,46 @@ def run(I,
         ):
 
     starting_itr = len(data['images'])
-    if len(data['commands'])>0:
-        total_command = copy.copy(data['commands'][-1])
-    else:
-        total_command = xp.zeros((M.Nact,M.Nact))
 
-    del_command = xp.zeros((M.Nact,M.Nact))
-    del_acts0 = np.zeros(M.Nacts)
+    total_command = copy.copy(data['commands'][-1]) if len(data['commands'])>0 else xp.zeros((M.Nact,M.Nact))
+    
+    del_command = xp.zeros((M.Nact,M.Nact)) # array to fill with actuator solutions
+    del_acts0 = np.zeros(M.Nacts) # initial guess is always just zeros
     for i in range(Nitr):
         print('Running estimation algorithm ...')
         
         if pwp_params is not None: 
-            E_ab = run_pwp(I, M, ensure_np_array(total_command[M.dm_mask]), **pwp_params)
+            E_ab = run_pwp(I, M, **pwp_params)
         else:
             E_ab = I.calc_wf()
         
         print('Computing EFC command with L-BFGS')
-        current_acts = ensure_np_array(total_command[M.dm_mask])
-        res = minimize(val_and_grad, 
-                       jac=True, 
-                       x0=del_acts0,
-                       args=(M, current_acts, E_ab, reg_cond, control_mask), 
-                       method='L-BFGS-B',
-                       tol=bfgs_tol,
-                       options=bfgs_opts,
-                       )
+        current_acts = total_command[M.dm_mask]
+        E_FP_NOM, E_EP, DM_PHASOR = M.forward(current_acts, I.wavelength_c, use_vortex=True, return_ints=True)
+        rmad_vars= {
+            'E_ab': E_ab,
+            'current_acts': current_acts,
+            'E_FP_NOM': E_FP_NOM, 
+            'E_EP': E_EP, 
+            'DM_PHASOR': DM_PHASOR,
+            'control_mask': control_mask,
+            'wavelength':I.wavelength_c,
+            'r_cond': reg_cond, 
+        }
+
+        res = minimize(
+            val_and_grad, 
+            jac=True, 
+            x0=del_acts0,
+            args=(M, rmad_vars, 0, 0, 0), 
+            method='L-BFGS-B',
+            tol=bfgs_tol,
+            options=bfgs_opts,
+        )
 
         del_acts = gain * res.x
         del_command[M.dm_mask] = del_acts
         total_command = (1-leakage)*total_command + del_command
-
-        # I.add_dm(del_command)
         I.set_dm(total_command)
 
         I.return_ni = True
@@ -143,7 +153,7 @@ def run(I,
                 cmap1='viridis', cmap2='viridis', 
                 vmin1=-xp.max(xp.abs(del_command)), vmax1=xp.max(xp.abs(del_command)),
                 vmin2=-xp.max(xp.abs(total_command)), vmax2=xp.max(xp.abs(total_command)),
-                pxscl3=I.psf_pixelscale_lamD, lognorm3=True, vmin3=vmin)
+                pxscl3=I.psf_pixelscale_lamDc, lognorm3=True, vmin3=vmin)
 
     return data
 
@@ -164,7 +174,7 @@ def plot_data(data, vmin=1e-9, vmax=1e-4):
     ref_im = ensure_np_array(data['images'][0])
     best_im = ensure_np_array(data['images'][ibest])
 
-    fig,ax = plt.subplots(nrows=1, ncols=3, figsize=(15,10), dpi=125, gridspec_kw={'width_ratios': [1, 1, 1.35], })
+    fig,ax = plt.subplots(nrows=1, ncols=3, figsize=(15,10), dpi=125, gridspec_kw={'width_ratios': [1, 1, 1], })
     ext = psf_pixelscale_lamD*npsf/2
     extent = [-ext, ext, -ext, ext]
 
