@@ -14,11 +14,10 @@ from prysm.polynomials import (
     hopkins
 )
 
-
 """Largely taken from poi.phase_retrieval, with modifications to support spectral diversity"""
 class ADPhaseRetireval:
     def __init__(self, amp, amp_dx, efl, wvls, basis, target, img_dx, defocus_waves=0, 
-                 initial_phase=None,):
+                 initial_phase=None, error_function='MSE'):
         if initial_phase is None:
             phs = np.zeros(amp.shape, dtype=float)
         else:
@@ -37,6 +36,12 @@ class ADPhaseRetireval:
         self.phs = phs
         self.zonal = False
         self.defocus = defocus_waves
+        self.error_fx = error_function.upper()
+        
+        # check for valid error function
+        if self.error_fx != 'MSE' and self.error_fx != 'GIE':
+            self.error_fx = 'MSE'
+            print("INVALID ERROR FUNCTION PROVIDED, DEFAULTING TO MSE")
 
         # configure the defocus polynomial
         x, y = make_xy_grid(amp.shape[0], diameter=self.epd)
@@ -80,7 +85,10 @@ class ADPhaseRetireval:
                 method='mdft')
             I += np.abs(G)**2 / len(self.wvls)
         
-        E = np.sum((I - self.D)**2)
+        if self.error_fx == 'MSE':
+            E = mse(I, self.D)
+        elif self.error_fx == 'GIE':
+            E = gie(I, self.D)
 
         self.phs = phs
         self.W = W
@@ -100,8 +108,10 @@ class ADPhaseRetireval:
         Wbar = 0
 
         for wvl in self.wvls:
-
-            Ibar = 2*(self.I - self.D) / len(self.wvls)
+            if self.error_fx == 'MSE':
+                Ibar = grad_mse(self.I, self.D) / len(self.wvls)
+            elif self.error_fx == 'GIE':
+                Ibar = grad_gie(self.I, self.D) / len(self.wvls)
             Gbar = 2 * Ibar * self.G
             gbar = focus_fixed_sampling_backprop(
                 wavefunction=Gbar,
@@ -136,8 +146,6 @@ class ADPhaseRetireval:
         return f.get(), g.get()
     
 
-
-
 class ParallelADPhaseRetrieval:
 
     def __init__(self, optlist):
@@ -165,3 +173,25 @@ class ParallelADPhaseRetrieval:
         self.cost.append(self.f)
 
         return self.f, self.g
+
+
+def mse(I, D):
+    return np.sum((I - D) ** 2)
+
+
+def grad_mse(I, D):
+    return 2 * (I - D)
+
+
+def gie(I, D):
+    t1 = np.sum(I * D) ** 2
+    t2 = np.sum(D ** 2) 
+    t3 = np.sum(I ** 2)
+    return 1 - t1 / (t2 * t3)
+
+
+def grad_gie(I, D):
+    t1 = np.sum(I * D)
+    t2 = np.sum(D ** 2)
+    t3 = np.sum(I ** 2)
+    return 2 * t1 / (t2 * t3 ** 2) * (I * t1 - D * t3)
