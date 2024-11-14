@@ -74,6 +74,7 @@ def run_pwp(I,
                 lognorm1=True, vmin1=xp.max(I_est)/1e3, 
                 cmap2='twilight',
                 pxscl=M.psf_pixelscale_lamD)
+        
     return E_est_2d
 
 def run(I, 
@@ -94,7 +95,7 @@ def run(I,
     starting_itr = len(data['images'])
 
     total_command = copy.copy(data['commands'][-1]) if len(data['commands'])>0 else xp.zeros((M.Nact,M.Nact))
-    
+
     del_command = xp.zeros((M.Nact,M.Nact)) # array to fill with actuator solutions
     del_acts0 = np.zeros(M.Nacts) # initial guess is always just zeros
     for i in range(Nitr):
