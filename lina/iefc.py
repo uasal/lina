@@ -109,7 +109,8 @@ def calibrate(sysi,
     else:
         return response_matrix
     
-def run(sysi,
+def run(sysi, 
+        data,
         control_matrix,
         probe_modes, probe_amplitude, 
         calibration_modes,
@@ -121,32 +122,26 @@ def run(sysi,
         plot_all=False,
         plot_probes=False,
         plot_radial_contrast=False,
-        all_ims=None, 
-        all_commands=None,
        ):
     
     print('Running iEFC...')
     start = time.time()
-    starting_itr = len(all_ims)
+    starting_itr = len(data['images'])
 
     Nmodes = calibration_modes.shape[0]
     modal_matrix = calibration_modes.reshape(Nmodes, -1)
 
-    total_coeff = 0.0
-    if len(all_commands)>0:
-        total_command = copy.copy(all_commands[-1])
-    else:
-        total_command = xp.zeros((sysi.Nact,sysi.Nact))
+    total_command = copy.copy(data['commands'][-1]) if len(data['commands'])>0 else xp.zeros((sysi.Nact,sysi.Nact))
+
     for i in range(num_iterations):
-        print(f"\tClosed-loop iteration {i+1+starting_itr} / {num_iterations+starting_itr}")
+        print(f"\tClosed-loop iteration {i+starting_itr} / {num_iterations+starting_itr-1}")
         sysi.subtract_dark = False
         diff_ims = take_measurement(sysi, probe_modes, probe_amplitude, plot=plot_probes)
         measurement_vector = diff_ims[:, control_mask].ravel()
 
         modal_coeff = -control_matrix.dot(measurement_vector)
-        print(modal_matrix.shape, modal_coeff.shape)
-        # total_coeff = (1.0-leakage)*total_coeff + loop_gain*modal_coeff
-        # total_command = calibration_modes.T.dot(total_coeff).reshape(sysi.Nact,sysi.Nact)
+        # print(modal_matrix.shape, modal_coeff.shape)
+
         del_command = modal_matrix.T.dot(modal_coeff).reshape(sysi.Nact,sysi.Nact)
         total_command = (1.0-leakage)*total_command + loop_gain*del_command
         sysi.set_dm(total_command)
@@ -155,13 +150,14 @@ def run(sysi,
         image_ni = sysi.snap()
         mean_ni = xp.mean(image_ni[control_mask])
 
-        all_ims.append(copy.copy(image_ni))
-        all_commands.append(copy.copy(total_command))
+        data['images'].append(copy.copy(image_ni))
+        data['commands'].append(copy.copy(total_command))
+        data['del_commands'].append(copy.copy(del_command))
     
         if plot_current: 
             if not plot_all: clear_output(wait=True)
             imshow3(del_command, total_command, image_ni, 
-                    f'Iteration {starting_itr + i + 1:d}: $\delta$DM', 
+                    f'Iteration {starting_itr + i:d}: $\delta$DM', 
                     'Total DM Command', 
                     f'Image\nMean NI = {mean_ni:.3e}',
                     cmap1='viridis', cmap2='viridis', 
@@ -173,7 +169,7 @@ def run(sysi,
                                           )
     
     print('Closed loop for given control matrix completed in {:.3f}s.'.format(time.time()-start))
-    return all_ims, all_commands
+    return data
 
 def run_iteration(I,
                   probe_modes, probe_amplitude, 
