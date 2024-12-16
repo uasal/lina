@@ -34,7 +34,7 @@ def take_measurement(sysi, probe_cube, probe_amplitude, pca_modes=None, plot=Fal
     if plot:
         for i, diff_im in enumerate(diff_ims):
             imshow2(probe_cube[i], diff_im.reshape(sysi.npsf, sysi.npsf), 
-                    f'Probe Command {i+1}', 'Difference Image', pxscl2=sysi.psf_pixelscale_lamD,
+                    f'Probe Command {i+1}', 'Difference Image', pxscl2=sysi.psf_pixelscale_lamDc,
                     cmap1='viridis')
     
     return diff_ims
@@ -161,27 +161,30 @@ def run(sysi,
                     'Total DM Command', 
                     f'Image\nMean NI = {mean_ni:.3e}',
                     cmap1='viridis', cmap2='viridis', 
-                    pxscl3=sysi.psf_pixelscale_lamD, lognorm3=True, vmin3=1e-9)
+                    pxscl3=sysi.psf_pixelscale_lamDc, lognorm3=True, vmin3=1e-9)
             
             if plot_radial_contrast:
-                utils.plot_radial_contrast(image_ni, control_mask, sysi.psf_pixelscale_lamD, nbins=50,
+                utils.plot_radial_contrast(image_ni, control_mask, sysi.psf_pixelscale_lamDc, nbins=50,
 #                                            ylims=[1e-10, 1e-4],
                                           )
     
     print('Closed loop for given control matrix completed in {:.3f}s.'.format(time.time()-start))
     return data
 
-def run_iteration(I,
-                  probe_modes, probe_amplitude, 
-                control_matrix,
-                modal_matrix,
-                control_mask,
-                gain=1/2,
-                leakage=0.0,
-                plot=True,
-                plot_probes=False,
-                clear=True,
-                ):
+def single_iteration(
+        I,
+        probe_modes, 
+        probe_amplitude, 
+        control_matrix,
+        modal_matrix,
+        control_mask,
+        gain=1/2,
+        leakage=0.0,
+        plot=True,
+        plot_probes=False,
+        clear=True,
+    ):
+    
     I.return_ni = True
 
     I.subtract_dark = False
@@ -203,7 +206,7 @@ def run_iteration(I,
                 'Total DM Command', 
                 f'Image\nMean NI = {mean_ni:.3e}',
                 cmap1='viridis', cmap2='viridis', 
-                pxscl3=I.psf_pixelscale_lamD, lognorm3=True, vmin3=1e-9)
+                pxscl3=I.psf_pixelscale_lamDc, lognorm3=True, vmin3=1e-9)
         if clear: clear_output(wait=True)
 
 def compute_hadamard_scale_factors(had_modes, scale_exp=1/6, scale_thresh=4, iwa=2.5, owa=13, oversamp=4, plot=False):

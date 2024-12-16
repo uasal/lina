@@ -167,7 +167,7 @@ def single_iteration(
     del_im = image - (locam_ref_channel.grab_latest() + locam_delta_channel.grab_latest())
 
     # compute the DM command with the image based on the time delayed wavefront
-    modal_coeff = -control_matrix.dot(del_im[control_mask])
+    modal_coeff = - control_matrix.dot( del_im[control_mask] )
     modal_coeff *= np.abs(modal_coeff) >= thresh
     modal_coeff *= gain_channel.grab_latest()[0]
     del_dm_command = modal_matrix.T.dot(modal_coeff).reshape(I.Nact,I.Nact)
