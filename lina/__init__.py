@@ -3,7 +3,7 @@ from . import utils
 from .imshows import imshow1, imshow2, imshow3
 
 # from . import phase_retrieval 
-from . import efc, iefc, pwp, utils, bsefc, llowfsc
+from . import efc, iefc, pwp, utils, bsefc, llowfsc, pointing, obs
 
 __version__ = '0.1.0'
 

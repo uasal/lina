@@ -1,0 +1,18 @@
+# This is a TOML baseline observatory configuration in SI units
+
+title = "Fine Pointing CubeSat Demo Configuration"
+
+[telescope]
+dx_pupil=0.25#circular aperture
+# primary mirror properties
+D_aperture = '85mm' # astronomically useful polished telescope clear aperture 
+D_M1_clear_ID = '0m' # astronomical polished M1 inner diameter
+
+[IMAGER]
+D= '85mm'
+mag= 11
+wavel= '550nm'
+RN='2.4electron'
+D_i='25electron/s'
+QE='.2electron/photon'
+bw='100nm'
