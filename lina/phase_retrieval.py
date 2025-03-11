@@ -1,152 +1,151 @@
-from prysm.mathops import np
+import numpy as truenp
+import matplotlib.pyplot as plt
 
+from prysm import (
+    mathops, 
+    conf,
+)
+from prysm.mathops import (
+    np,
+    fft,
+    interpolate,
+    ndimage,
+)
+from prysm.coordinates import (
+    make_xy_grid, 
+    cart_to_polar,
+)
+from prysm.propagation import Wavefront as WF
 from prysm.propagation import (
     focus_fixed_sampling,
     focus_fixed_sampling_backprop
-)
-
-from prysm.coordinates import (
-    make_xy_grid,
-    cart_to_polar
-)
+)                              
 
 from prysm.polynomials import (
-    hopkins
+    noll_to_nm,
+    zernike_nm_seq,
+    hopkins,
+    sum_of_2d_modes
 )
 
-"""Largely taken from poi.phase_retrieval, with modifications to support spectral diversity"""
-class ADPhaseRetireval:
-    def __init__(self, amp, amp_dx, efl, wvls, basis, target, img_dx, defocus_waves=0, 
-                 initial_phase=None, error_function='MSE'):
-        if initial_phase is None:
-            phs = np.zeros(amp.shape, dtype=float)
-        else:
-            phs = initial_phase
+from scipy.optimize import minimize
 
-        self.amp = amp
-        self.amp_select = self.amp > 1e-9
-        self.amp_dx = amp_dx
-        self.epd = amp.shape[0] * amp_dx
-        self.efl = efl
-        self.wvls = wvls
-        self.basis = basis
-        self.img_dx = img_dx
-        self.D = target
-        self.init_phs = phs
-        self.phs = phs
-        self.zonal = False
-        self.defocus = defocus_waves
-        self.error_fx = error_function.upper()
+
+def MSE(I, D):
+    return np.sum((I - D) ** 2)
+
+
+def grad_MSE(I, D):
+    return 2 * (I - D)
+
+
+def GIE(I, D):
+    t1 = np.sum(I * D) ** 2
+    t2 = np.sum(D ** 2) 
+    t3 = np.sum(I ** 2)
+    return 1 - t1 / (t2 * t3)
+
+
+def grad_GIE(I, D):
+    t1 = np.sum(I * D)
+    t2 = np.sum(D ** 2)
+    t3 = np.sum(I ** 2)
+    return 2 * t1 / (t2 * t3 ** 2) * (I * t1 - D * t3)
+
+class ADPR:
+    def __init__(self, wvls, pupil, dx_pupil, psf, dx_psf, efl, modes, 
+                 defocus_coeff, initial_phase=None, error_fx='GIE'):
         
-        # check for valid error function
-        if self.error_fx != 'MSE' and self.error_fx != 'GIE':
-            self.error_fx = 'MSE'
-            print("INVALID ERROR FUNCTION PROVIDED, DEFAULTING TO MSE")
-
-        # configure the defocus polynomial
-        x, y = make_xy_grid(amp.shape[0], diameter=self.epd)
-        r, t = cart_to_polar(x, y)
-        r_z = r / (self.epd / 2)
-        self.defocus_polynomial = hopkins(0, 2, 0, r_z, t, 0)
-        self.defocus_aberration = 2 * np.pi * self.defocus_polynomial * self.defocus * self.amp
+        # ADPR parameters
+        self.wvls = wvls
+        self.pup = pupil
+        self.dx_pup = dx_pupil
+        self.D_pup = pupil.shape[0] * dx_pupil
+        self.efl = efl
+        self.modes = modes
+        self.psf = psf
+        self.dx_psf = dx_psf
+        self.defocus_coeff = defocus_coeff
+        self.error_fx = error_fx.upper()
         self.cost = []
 
-    def set_optimization_method(self, zonal=False):
-        self.zonal = zonal
-
-    def update(self, x):
-        if not self.zonal:
-            if len(x) == 1:
-                phs = self.init_phs + np.asarray(self.basis) * np.asarray(x)
-            else:
-                phs = self.init_phs + np.tensordot(np.asarray(self.basis), 
-                                                   np.asarray(x), axes=(0,0))
+        if initial_phase is None:
+            self.init_phase = np.zeros(pupil.shape, dtype=float)
         else:
-            phs = self.init_phs + np.zeros(self.amp.shape, dtype=float)
-            phs[self.amp_select] = x
-        
-        I = 0
+            self.init_phase = initial_phase
 
-        for wvl in self.wvls:
+        if error_fx == 'MSE':
+            self.err = MSE 
+            self.grad_err = grad_MSE
+        elif error_fx == 'GIE':
+            self.err = GIE
+            self.grad_err = grad_GIE
+        else:
+            self.err = GIE
+            self.grad_err = grad_GIE
+            print("INVALID ERROR FUNCTION PROVIDED, DEFAULTING TO GAIN INVARIANT ERROR")
 
-            W = (2 * np.pi / wvl) * phs
-
-            # TODO: Check if this is a minus sign instead
-            W -= self.defocus_aberration
-            g = self.amp * np.exp(1j * W)
-            G = focus_fixed_sampling(
-                wavefunction=g,
-                input_dx=self.amp_dx,
-                prop_dist = self.efl,
-                wavelength=wvl,
-                output_dx=self.img_dx,
-                output_samples=self.D.shape,
-                shift=(0, 0),
-                method='mdft')
-            I += np.abs(G)**2 / len(self.wvls)
-        
-        if self.error_fx == 'MSE':
-            E = mse(I, self.D)
-        elif self.error_fx == 'GIE':
-            E = gie(I, self.D)
-
-        self.phs = phs
-        self.W = W
-        self.g = g
-        self.G = G
-        self.I = I
-        self.E = E
-        return
+        # defocus diversity
+        x, y = make_xy_grid(pupil.shape[0], diameter=self.D_pup)
+        r, t = cart_to_polar(x, y)
+        r_norm = r / (self.D_pup / 2)
+        self.W020 = hopkins(0, 2, 0, r_norm, t, 0)
+        self.defocus = 2 * np.pi * self.W020 * defocus_coeff * pupil
 
     def fwd(self, x):
-        self.update(x)
-        return self.E
 
-    def rev(self, x):
-        self.update(x)
+        self.phase = self.init_phase + sum_of_2d_modes(self.modes, np.array(x))
 
-        Wbar = 0
+        self.I = 0
 
         for wvl in self.wvls:
-            if self.error_fx == 'MSE':
-                Ibar = grad_mse(self.I, self.D) / len(self.wvls)
-            elif self.error_fx == 'GIE':
-                Ibar = grad_gie(self.I, self.D) / len(self.wvls)
-            Gbar = 2 * Ibar * self.G
-            gbar = focus_fixed_sampling_backprop(
-                wavefunction=Gbar,
-                input_dx=self.amp_dx,
-                prop_dist = self.efl,
-                wavelength=wvl,
-                output_dx=self.img_dx,
-                output_samples=self.phs.shape,
-                shift=(0, 0),
-                method='mdft')
 
-            Wbar += 2 * np.pi / wvl * np.imag(gbar * np.conj(self.g))
+            self.W = (2 * np.pi / wvl) * self.phase
+            self.W -= self.defocus
+
+            self.g = self.pup * np.exp(1j * self.W)
+
+            self.G = focus_fixed_sampling(wavefunction=self.g, input_dx=self.dx_pup, prop_dist=self.efl, wavelength=wvl,
+                                          output_dx=self.dx_psf, output_samples=self.psf.shape[0], shift=(0, 0), method='mdft')
             
-        if not self.zonal:
-            abar = np.tensordot(self.basis, Wbar)
+            self.I += np.abs(self.G) ** 2 / len(self.wvls)
 
-        self.Ibar = Ibar
-        self.Gbar = Gbar
-        self.gbar = gbar
-        self.Wbar = Wbar
+        self.E = self.err(self.I, self.psf)
 
-        if not self.zonal:
-            self.abar = abar
-            return self.abar
-        else:
-            return self.Wbar[self.amp_select]
-
-    def fg(self, x):
-        g = self.rev(x)
-        f = self.E
-        self.cost.append(f)
-        return f.get(), g.get()
+        return self.E
     
+    def rev(self, x):
 
-class ParallelADPhaseRetrieval:
+        self.fwd(x)
+
+        self.Wbar = 0
+
+        for wvl in self.wvls:
+
+            self.Ibar = self.grad_err(self.I, self.psf) / len(self.wvls)
+
+            self.Gbar = 2 * self.Ibar * self.G 
+
+            self.gbar = focus_fixed_sampling_backprop(wavefunction=self.Gbar, input_dx=self.dx_pup, prop_dist=self.efl, wavelength=wvl,
+                                                      output_dx=self.dx_psf, output_samples=self.pup.shape[0], shift=(0, 0), method='mdft')
+            
+            self.Wbar += 2 * np.pi / wvl * np.imag(self.gbar * np.conj(self.g))
+
+        self.abar = np.tensordot(self.modes, self.Wbar)
+
+        return self.abar
+    
+    def fg(self, x):
+
+        g = self.rev(x)
+
+        f = self.E
+
+        self.cost.append(f)
+
+        return f.get(), g.get()
+
+class FDPR:
 
     def __init__(self, optlist):
 
@@ -173,25 +172,84 @@ class ParallelADPhaseRetrieval:
         self.cost.append(self.f)
 
         return self.f, self.g
+    
+def BBPR(wvls, pupil, dx_pupil, psfs, dx_psf, efl, bb_parameters, 
+         defocus_coeffs, error_fx='GIE', display=True):
+    
+    # pupil coords
+    diam_pup = pupil.shape[0] * dx_pupil
+    x, y = make_xy_grid(shape=pupil.shape[0], diameter=diam_pup)
+    r, t = cart_to_polar(x, y)
 
+    # zernikes to be estimated
+    z_min = int(bb_parameters['general']['zernike_min'])
+    z_max = int(bb_parameters['general']['zernike_max']) + 1 # add 1 due to range going to i - 1
+    nms = [noll_to_nm(i) for i in range(z_min, z_max)]
+    z_coeffs = list(zernike_nm_seq(nms, r, t, norm=True))
+    zernikes = [z / np.max(np.abs(z)) for z in z_coeffs]
 
-def mse(I, D):
-    return np.sum((I - D) ** 2)
+    # mask for which zernikes are field-dependent
+    fd_inds = np.array(bb_parameters['general']['zernikes_field_dependent']) - bb_parameters['general']['zernike_min']
+    fd_mask = np.ones(len(zernikes), dtype='bool')
+    fd_mask[fd_inds] = 1
 
+    # for storing optimization results 
+    opt_opds = [np.zeros_like(pupil).get() for i in range(len(psfs))]
+    opt_coeffs = [np.zeros((len(zernikes),)).get() for i in range(len(psfs))]
+    opt_psfs = [np.zeros_like(psfs[0]).get() for i in range(len(psfs))]
+    results = []
 
-def grad_mse(I, D):
-    return 2 * (I - D)
+    for i, param in enumerate(bb_parameters):
+        if param.__contains__('iteration'):
 
+            # gain coeffs for zernikes
+            gains = np.ones((len(zernikes),))
+            gains[fd_mask] = bb_parameters[param]['gain_field_dependent']
+            gains[~fd_mask] = bb_parameters[param]['gain_common']
 
-def gie(I, D):
-    t1 = np.sum(I * D) ** 2
-    t2 = np.sum(D ** 2) 
-    t3 = np.sum(I ** 2)
-    return 1 - t1 / (t2 * t3)
+            options = bb_parameters[param]['opt_options']
 
+            # make list of ADPR classes 
+            adpr_list = []
+            for j in range(len(psfs)):
+                adpr_list.append(ADPR(wvls=wvls.tolist(), pupil=pupil, dx_pupil=dx_pupil, psf=psfs[j], dx_psf=dx_psf, 
+                                        efl=efl, modes=np.array(zernikes) * gains[:, None, None], defocus_coeff=defocus_coeffs[j], 
+                                        initial_phase=np.array(opt_opds[j]), error_fx=error_fx))
+                
+            # individual or joint optimization
+            if str(bb_parameters[param]['type']).upper() == 'JOINT':
 
-def grad_gie(I, D):
-    t1 = np.sum(I * D)
-    t2 = np.sum(D ** 2)
-    t3 = np.sum(I ** 2)
-    return 2 * t1 / (t2 * t3 ** 2) * (I * t1 - D * t3)
+                fdpr = FDPR(optlist=adpr_list)
+                result = minimize(fdpr.fg, x0=np.zeros(len(zernikes)).get(), jac=True, method='L-BFGS-B', options=options)
+                
+                for j in range(len(psfs)):
+                    opt_coeffs[j] += result.x * gains.get()
+                    opt_opds[j] = sum_of_2d_modes(zernikes, np.array(opt_coeffs[j])).get()
+                    opt_psfs[j] = fdpr.optlist[j].I.get()
+
+            elif str(bb_parameters[param]['type']).upper() == 'INDIVIDUAL':
+
+                for j in range(len(psfs)):
+                    result = minimize(adpr_list[j].fg, x0=np.zeros(len(zernikes)).get(), jac=True, method='L-BFGS-B', options=options)
+                    opt_coeffs[j] += result.x * gains.get()
+                    opt_opds[j] = sum_of_2d_modes(zernikes, np.array(opt_coeffs[j])).get()
+                    opt_psfs[j] = fdpr.optlist[j].I.get()
+            
+            # store results
+            results.append({'coeffs' : opt_coeffs,
+                            'opds'   : opt_opds,
+                            'psfs'   : opt_psfs})
+
+            # if desired, display costs
+            if display:
+                for j, opt in enumerate(adpr_list):
+                    plt.plot(np.asarray(opt.cost).get(), label=f'Defocus : {defocus_coeffs[j]:0.2f}$\lambda$', alpha=0.4)
+                plt.title(f'BBPR Iteration {i:.0f}')
+                plt.ylabel('Error Function')
+                plt.xlabel('Optimizer Iteration')
+                plt.legend(loc='upper right')
+                plt.yscale('log')
+                plt.show()
+
+    return results
+
