@@ -65,7 +65,6 @@ class ADPR:
         self.modes = modes
         self.psf = psf
         self.dx_psf = dx_psf
-        self.defocus_coeff = defocus_coeff
         self.error_fx = error_fx.upper()
         self.cost = []
 
@@ -85,12 +84,14 @@ class ADPR:
             self.grad_err = grad_GIE
             print("INVALID ERROR FUNCTION PROVIDED, DEFAULTING TO GAIN INVARIANT ERROR")
 
-        # defocus diversity
+        # defocus 
+        self.defocus_coeff = defocus_coeff
+        self.defocus_coeff *= (wvls[0] + wvls[-1]) / 2 * 1e3 # waves -> um -> nm
         x, y = make_xy_grid(pupil.shape[0], diameter=self.D_pup)
         r, t = cart_to_polar(x, y)
         r_norm = r / (self.D_pup / 2)
         self.W020 = hopkins(0, 2, 0, r_norm, t, 0)
-        self.defocus = 2 * np.pi * self.W020 * defocus_coeff * pupil
+        self.defocus = self.W020 * defocus_coeff * pupil
 
     def fwd(self, x):
 
@@ -100,8 +101,7 @@ class ADPR:
 
         for wvl in self.wvls:
 
-            self.W = (2 * np.pi / wvl) * self.phase
-            self.W -= self.defocus
+            self.W = (2 * np.pi / wvl) * (self.phase - self.defocus)
 
             self.g = self.pup * np.exp(1j * self.W)
 
