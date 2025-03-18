@@ -87,11 +87,12 @@ class ADPR:
         # defocus 
         self.defocus_coeff = defocus_coeff
         self.defocus_coeff *= (wvls[0] + wvls[-1]) / 2 * 1e3 # waves -> um -> nm
+
         x, y = make_xy_grid(pupil.shape[0], diameter=self.D_pup)
         r, t = cart_to_polar(x, y)
         r_norm = r / (self.D_pup / 2)
         self.W020 = hopkins(0, 2, 0, r_norm, t, 0)
-        self.defocus = self.W020 * defocus_coeff * pupil
+        self.defocus = self.W020 * self.defocus_coeff * pupil
 
     def fwd(self, x):
 
