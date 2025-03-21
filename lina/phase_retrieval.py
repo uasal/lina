@@ -130,7 +130,7 @@ class ADPR:
             self.gbar = focus_fixed_sampling_backprop(wavefunction=self.Gbar, input_dx=self.dx_pup, prop_dist=self.efl, wavelength=wvl,
                                                       output_dx=self.dx_psf, output_samples=self.pup.shape[0], shift=(0, 0), method='mdft')
             
-            self.Wbar += 2 * np.pi / wvl * np.imag(self.gbar * np.conj(self.g)) / 1e3
+            self.Wbar += (2 * np.pi / wvl) * np.imag(self.gbar * np.conj(self.g)) / 1e3
 
         self.abar = np.tensordot(self.modes, self.Wbar)
 
