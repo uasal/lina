@@ -66,7 +66,7 @@ class ADPR:
         self.psf = psf
         self.dx_psf = dx_psf
         self.error_fx = error_fx.upper()
-        self.cost = []
+        self.costs = []
 
         if initial_phase is None:
             self.init_phase = np.zeros(pupil.shape, dtype=float)
@@ -98,39 +98,51 @@ class ADPR:
 
         self.phase = self.init_phase + sum_of_2d_modes(self.modes, np.array(x))
 
+        self.Ws = []
+        self.gs = []
+        self.Gs = []
         self.I = 0
 
         for wvl in self.wvls:
 
-            self.W = (2 * np.pi / wvl) * (self.phase - self.defocus) / 1e3
+            W = (2 * np.pi / wvl) * (self.phase - self.defocus) / 1e3
+            self.Ws.append(W)
 
-            self.g = self.pup * np.exp(1j * self.W)
+            g = self.pup * np.exp(1j * W)
+            self.gs.append(g)
 
-            self.G = focus_fixed_sampling(wavefunction=self.g, input_dx=self.dx_pup, prop_dist=self.efl, wavelength=wvl,
-                                          output_dx=self.dx_psf, output_samples=self.psf.shape[0], shift=(0, 0), method='mdft')
-            
-            self.I += np.abs(self.G) ** 2 / len(self.wvls)
+            G = focus_fixed_sampling(wavefunction=g, input_dx=self.dx_pup, prop_dist=self.efl, wavelength=wvl,
+                                     output_dx=self.dx_psf, output_samples=self.psf.shape[0], shift=(0, 0), method='mdft')
+            self.Gs.append(G)
+
+            self.I += np.abs(G) ** 2 / len(self.wvls)
 
         self.E = self.err(self.I, self.psf)
 
+        self.costs.append(self.E)
+
         return self.E
     
-    def rev(self, x):
+    def rev(self):
 
-        self.fwd(x)
-
+        self.Ibars = []
+        self.Gbars = []
+        self.gbars = []
         self.Wbar = 0
 
-        for wvl in self.wvls:
+        for wvl, G, g in zip(self.wvls, self.Gs, self.gs):
 
-            self.Ibar = self.grad_err(self.I, self.psf) / len(self.wvls)
+            Ibar = self.grad_err(self.I, self.psf) / len(self.wvls)
+            self.Ibars.append(Ibar)
 
-            self.Gbar = 2 * self.Ibar * self.G 
+            Gbar = 2 * Ibar * G 
+            self.Gbars.append(Gbar)
 
-            self.gbar = focus_fixed_sampling_backprop(wavefunction=self.Gbar, input_dx=self.dx_pup, prop_dist=self.efl, wavelength=wvl,
-                                                      output_dx=self.dx_psf, output_samples=self.pup.shape[0], shift=(0, 0), method='mdft')
-            
-            self.Wbar += (2 * np.pi / wvl) * np.imag(self.gbar * np.conj(self.g)) / 1e3
+            gbar = focus_fixed_sampling_backprop(wavefunction=Gbar, input_dx=self.dx_pup, prop_dist=self.efl, wavelength=wvl,
+                                                 output_dx=self.dx_psf, output_samples=self.pup.shape[0], shift=(0, 0), method='mdft')
+            self.gbars.append(gbar)
+
+            self.Wbar += (2 * np.pi / wvl) * np.imag(gbar * np.conj(g)) / 1e3
 
         self.abar = np.tensordot(self.modes, self.Wbar)
 
@@ -138,11 +150,9 @@ class ADPR:
     
     def fg(self, x):
 
-        g = self.rev(x)
+        f = self.fwd(x)
 
-        f = self.E
-
-        self.cost.append(f)
+        g = self.rev()
 
         return f.get(), g.get()
 
@@ -153,7 +163,7 @@ class FDPR:
         self.optlist = optlist
         self.f = 0
         self.g = 0
-        self.cost = []
+        self.costs = []
 
     def refresh(self):
         self.f = 0
@@ -170,7 +180,7 @@ class FDPR:
             self.f += f
             self.g += g
         
-        self.cost.append(self.f)
+        self.costs.append(self.f)
 
         return self.f, self.g
     
@@ -244,7 +254,7 @@ def BBPR(wvls, pupil, dx_pupil, psfs, dx_psf, efl, bb_parameters,
             # if desired, display costs
             if display:
                 for j, opt in enumerate(adpr_list):
-                    plt.plot(np.asarray(opt.cost).get(), label=f'Defocus : {defocus_coeffs[j]:0.2f}$\lambda$', alpha=0.4)
+                    plt.plot(np.asarray(opt.costs).get(), label=f'Defocus : {defocus_coeffs[j]:0.2f}$\lambda$', alpha=0.4)
                 plt.title(f'BBPR Iteration {i:.0f}')
                 plt.ylabel('Error Function')
                 plt.xlabel('Optimizer Iteration')
