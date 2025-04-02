@@ -54,24 +54,44 @@ def grad_GIE(I, D):
 
 class ADPR:
     def __init__(self, wvls, pupil, dx_pupil, psf, dx_psf, efl, modes, 
-                 defocus_coeff, initial_phase=None, error_fx='GIE'):
+                 defocus_coeff, initial_opd=None, error_fx='GIE'):
         
+        """A class for performing phase retrieval using algorithmic differentiation on a single PSF. 
+        Not terribly useful on its own, but several of these can be fed to as a list to the FDPR or FFPR
+        classes to perform focus-diverse or full-field phase retrieval, respectively.
+
+        Args:
+            wvls (list): wavelength(s), microns.
+            pupil (ndarray): pupil function.
+            dx_pupil (float): spacing between samples in the pupil plane, millimeters.
+            psf (ndarray): ground-truth PSF image to perform phase retrieval on.
+            dx_psf (float): spacing between samples in the focal plane, microns.
+            efl (float): effective focal length of the optical system, millimeters.
+            modes (list): the modal basis whose coefficients will be optimized for during phase retrieval.
+            defocus_coeff (float): the amount of defocus present in the PSF, waves.
+            initial_opd (ndarray, optional): initial guess of the pupil OPD, nanometers. Defaults to None.
+            error_fx (str, optional): which error function to use. 
+            'MSE' is for mean squared error.
+            'GIE' is for gain-invariant error; performs better with noisy data.
+            Defaults to 'GIE'.
+        """
+
         # ADPR parameters
         self.wvls = wvls
         self.pup = pupil
         self.dx_pup = dx_pupil
         self.D_pup = pupil.shape[0] * dx_pupil
         self.efl = efl
-        self.modes = modes
+        self.modes = np.array(modes)
         self.psf = psf
         self.dx_psf = dx_psf
         self.error_fx = error_fx.upper()
         self.costs = []
 
-        if initial_phase is None:
-            self.init_phase = np.zeros(pupil.shape, dtype=float)
+        if initial_opd is None:
+            self.init_opd = np.zeros(pupil.shape, dtype=float)
         else:
-            self.init_phase = initial_phase
+            self.init_opd = initial_opd
 
         if error_fx == 'MSE':
             self.err = MSE 
@@ -95,28 +115,43 @@ class ADPR:
         self.defocus = self.W020 * self.defocus_coeff * pupil
 
     def fwd(self, x):
+        
+        # calculate OPD at the pupil using the initial OPD guess, the 
+        # modal basis and the modal coefficients
+        self.opd = self.init_opd + sum_of_2d_modes(self.modes, np.array(x))
 
-        self.phase = self.init_phase + sum_of_2d_modes(self.modes, np.array(x))
-
+        # initialize: 
+        # per-wavelength W: the pupil phase
+        # per-wavelength g: the pupil-plane complex wavefront
+        # per-wavelength G: the focal-plane complex wavefront
+        # I: focal-plane intensity 
         self.Ws = []
         self.gs = []
         self.Gs = []
         self.I = 0
 
+        # loop through wavelengths
         for wvl in self.wvls:
-
-            W = (2 * np.pi / wvl) * (self.phase - self.defocus) / 1e3
+            
+            # convert OPD at the pupil to pupil phase, the defocus term is included at this step
+            W = (2 * np.pi / wvl) * (self.opd - self.defocus) / 1e3
             self.Ws.append(W)
 
+            # create the pupil-plane complex wavefront using pupil phase and a pupil function
             g = self.pup * np.exp(1j * W)
             self.gs.append(g)
 
+            # propagate the pupil-plane complex wavefront to the focal plane
+            # this is just a matrix DFT
             G = focus_fixed_sampling(wavefunction=g, input_dx=self.dx_pup, prop_dist=self.efl, wavelength=wvl,
                                      output_dx=self.dx_psf, output_samples=self.psf.shape[0], shift=(0, 0), method='mdft')
             self.Gs.append(G)
 
+            # convert the focal-plane complex wavefront to intensity, if multiple wavelengths are given 
+            # then we sum the monochromatic intensities across wavelengths to get the broadband intensity
             self.I += np.abs(G) ** 2 / len(self.wvls)
 
+        # calculate the error between the estimated PSF and the ground-truth PSF
         self.E = self.err(self.I, self.psf)
 
         self.costs.append(self.E)
@@ -124,26 +159,39 @@ class ADPR:
         return self.E
     
     def rev(self):
-
+        
+        # initialize:
+        # per-wavelength Ibar: the focal-plane intensity gradient with respect to error
+        # per-wavelength Gbar: the focal-plane complex wavefront gradient with respect to the focal-plane intensity gradient
+        # per-wavelength gbar: the pupil-plane complex wavefront gradient with respect to the focal-plane complex wavefront gradient
+        # Wbar: the pupil phase gradient with respect to the pupil-plane complex wavefront gradient
         self.Ibars = []
         self.Gbars = []
         self.gbars = []
         self.Wbar = 0
 
+        # loop through wavelengths, per-wavelength G, and per-wavelength g
         for wvl, G, g in zip(self.wvls, self.Gs, self.gs):
-
+            
+            # calculate the focal-plane intensity gradient with respect to error
             Ibar = self.grad_err(self.I, self.psf) / len(self.wvls)
             self.Ibars.append(Ibar)
 
+            # calculate the focal-plane complex wavefront gradient with respect to the focal-plane intensity gradient
             Gbar = 2 * Ibar * G 
             self.Gbars.append(Gbar)
 
+            # calculate the pupil-plane complex wavefront gradient with respect to the focal-plane complex wavefront gradient
+            # this is just an inverse matrix-DFT
             gbar = focus_fixed_sampling_backprop(wavefunction=Gbar, input_dx=self.dx_pup, prop_dist=self.efl, wavelength=wvl,
                                                  output_dx=self.dx_psf, output_samples=self.pup.shape[0], shift=(0, 0), method='mdft')
             self.gbars.append(gbar)
 
+            # calculate the pupil phase gradient with respect to the pupil-plane complex wavefront gradient, if
+            # multiple wavelengths are given then we sum the gradients across wavelengths to get the total gradient
             self.Wbar += (2 * np.pi / wvl) * np.imag(gbar * np.conj(g)) / 1e3
 
+        # calculate the modal coefficient gradient with respect to the pupil phase gradient
         self.abar = np.tensordot(self.modes, self.Wbar)
 
         return self.abar
