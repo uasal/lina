@@ -279,7 +279,7 @@ class FFPR:
         self.Z11_c = 0
         
         # for field-dependent optimization
-        self.modes_field = field_modes
+        self.modes_field = np.array(field_modes)
         self.coeffs_field_nom = [[interp(np.array(position)) for interp in self.field_interps] for position in self.psf_positions]
 
         # for joint optimization
@@ -387,7 +387,7 @@ class FFPR:
 
         for opt, position, coeffs_nom in zip(self.optlist, self.psf_positions, self.coeffs_field_nom):
 
-            opt.init_phase = sum_of_2d_modes(self.modes_common, self.coeffs_common)
+            opt.init_opd = sum_of_2d_modes(self.modes_common, self.coeffs_common)
 
             opt.modes = self.modes_field
             
@@ -432,7 +432,7 @@ class FFPR:
 
             coeffs_field = self._fwd_calc_coeffs_field(position, coeffs_nom)
             
-            opt.init_phase = sum_of_2d_modes(self.modes_field, coeffs_field)
+            opt.init_opd = sum_of_2d_modes(self.modes_field, coeffs_field)
 
             opt.modes = self.modes_common
 
