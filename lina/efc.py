@@ -141,7 +141,10 @@ def run(sysi,
         efield_ri[1::2] = electric_field[control_mask].imag
 
         modal_coeff = -control_matrix.dot(efield_ri)
-        del_command = calibration_modes.T.dot(modal_coeff).reshape(sysi.Nact,sysi.Nact)
+        #print(modal_coeff.shape)
+        #del_command = calibration_modes.T.dot(modal_coeff)#.reshape(sysi.Nact,sysi.Nact)
+        #print(del_command.shape)
+        del_command = sysi.dms[0].map_actuators_to_command(modal_coeff)
         total_command = (1.0-leakage)*total_command + loop_gain*del_command
         sysi.set_dm(total_command)
 
