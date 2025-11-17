@@ -2,6 +2,7 @@ from .math_module import xp, xcipy, ensure_np_array
 from lina import utils, coro_utils, pwp
 
 import numpy as np
+from scipy.optimize import minimize
 import time
 import copy
 
@@ -11,36 +12,6 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colors import LogNorm, Normalize
 from matplotlib.gridspec import GridSpec
 
-def compute_jacobian(
-        M, 
-        wavelength,
-        control_mask, 
-        amp=1e-9, 
-        current_acts=None, 
-    ):
-
-    current_acts = xp.zeros(M.Nacts) if current_acts is None else xp.array(current_acts)    
-
-    Nmask = int(control_mask.sum())
-    jac = xp.zeros((2*Nmask, M.Nacts))
-
-    start = time.time()
-    for i in range(M.Nacts):
-        act_poke = xp.zeros(M.Nacts)
-        act_poke[i] = amp
-
-        E_pos = M.forward(current_acts + act_poke, wavelength, use_vortex=1, )
-        E_neg = M.forward(current_acts - act_poke, wavelength, use_vortex=1, )
-        response = ( E_pos - E_neg ) / (2*amp)
-
-        jac[::2, i] = response.real[control_mask]
-        jac[1::2, i] = response.imag[control_mask]
-
-        print(f"\tCalibrated mode {i+1:d}/{M.Nacts:d} in {time.time()-start:.3f}s", end='')
-        print("\r", end="")
-
-    return jac
-
 def run(
         efc_data,
         CAMSCI_STREAM,
@@ -49,38 +20,64 @@ def run(
         ref_psf_params,
         NFRAMES,
         dark_im,
+        M, 
+        val_and_grad,
         control_mask,
         dm_mask,
-        control_matrix,
         pwp_params=None,
         Nitr=3, 
+        reg_cond=1e-2,
+        bfgs_tol=1e-3,
+        bfgs_opts=None,
         gain=1.0, 
-        leakage=0.0,
+        leakage=0.0, 
+        vmin=1e-9,
+        verbose=False,  
         delay=0.05,
     ):
-    
+
     starting_itr = len(efc_data['images'])
-    Nmask = int(control_mask.sum())
 
     del_command = np.zeros(DM_STREAM.shape) # array to fill with actuator solutions
-    E_ab_vec = xp.zeros((2*Nmask))
     for i in range(Nitr):
         print(f'Running iteration {starting_itr+i:d}')
 
         current_command = DM_STREAM.grab_latest() / 1e6
+        current_acts = current_command[dm_mask]
 
-        E_ab_est, E_ab_est_vec = pwp.run_with_jacobian(
+        E_FP_NOM = M.forward(current_acts, M.wavelength_c, use_vortex=True, return_ints=False)
+        pwp_params.update({'E_FP_NOM':E_FP_NOM})
+
+        E_ab, _ = pwp.run_with_model(
             CAMSCI_STREAM,
             DM_STREAM, 
             im_params,
             ref_psf_params,
+            M,
             **pwp_params,
         )
-        E_ab_vec[::2] = xp.real(E_ab_est_vec)
-        E_ab_vec[1::2] = xp.imag(E_ab_est_vec)
 
-        del_acts = - gain * control_matrix.dot(E_ab_vec)
-        del_command[dm_mask] = ensure_np_array(del_acts)
+        rmad_vars= {
+            'E_ab': E_ab,
+            'current_acts': current_acts,
+            'E_FP_NOM': E_FP_NOM,
+            'control_mask': control_mask,
+            'wavelength':M.wavelength_c,
+            'r_cond': reg_cond, 
+        }
+
+        res = minimize(
+            val_and_grad, 
+            jac=True, 
+            x0=np.zeros(M.Nacts), # initial guess is always just zeros
+            args=(M, rmad_vars, verbose, 0), 
+            method='L-BFGS-B',
+            tol=bfgs_tol,
+            options=bfgs_opts,
+        )
+
+        del_acts = gain * res.x
+        del_command[dm_mask] = del_acts
         total_command = (1 - leakage) * current_command + del_command
         DM_STREAM.write(total_command*1e6)
         time.sleep(delay)
@@ -91,9 +88,11 @@ def run(
 
         efc_data['images'].append(copy.copy(metric_im_ni))
         efc_data['contrasts'].append(mean_ni)
-        efc_data['efields'].append(copy.copy(E_ab_est))
+        efc_data['efields'].append(copy.copy(E_ab))
         efc_data['commands'].append(copy.copy(total_command))
         efc_data['del_commands'].append(copy.copy(del_command))
+        efc_data['bfgs_tols'].append(bfgs_tol)
+        efc_data['reg_conds'].append(reg_cond)
 
         utils.imshow(
             [del_command, total_command, metric_im_ni],
@@ -103,3 +102,4 @@ def run(
         )
 
     return efc_data
+

@@ -1,6 +1,5 @@
-from .math_module import xp, _scipy, ensure_np_array
-import lina.utils as utils
-from lina.imshows import imshow1, imshow2, imshow3
+from .math_module import xp, xcipy, ensure_np_array
+from lina import utils, shmim_utils
 
 import numpy as np
 import astropy.units as u
@@ -11,184 +10,299 @@ import time
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.gridspec import GridSpec
 
-def record_chop_ims(I, mode, amp, Nchops, plot=False):
-    chops = xp.zeros((3*Nchops, I.nlocam, I.nlocam))
-    for i in range(Nchops):
-        # First image at the 0 point
-        zero_im = I.snap_locam()
-
-        # Second image at the positive chop
-        I.add_dm(amp*mode)
-        pos_im = I.snap_locam()
-        I.add_dm(-amp*mode)
-
-        # Fourth image at negative chop
-        I.add_dm(-amp*mode)
-        neg_im = I.snap_locam()
-        I.add_dm(amp*mode)
-
-        if plot:
-            imshow3(zero_im, pos_im, neg_im)
-
-        chops[3*i] = zero_im
-        chops[3*i+1] = pos_im
-        chops[3*i+2] = neg_im
-
-    return chops
-
-def make_shear_chops(ref_locam_im, shear_pix=1, plot=False):
-    nlocam = ref_locam_im.shape[0]
-    shear_chops = xp.zeros((2, nlocam, nlocam))
-    shear_chops[0] = ( _scipy.ndimage.shift(ref_locam_im, (0,shear_pix), order=5) - ref_locam_im ) / shear_pix
-    shear_chops[1] = ( _scipy.ndimage.shift(ref_locam_im, (shear_pix,0), order=5) - ref_locam_im ) / shear_pix
-    if plot: imshow2(shear_chops[0], shear_chops[1])
-    return shear_chops
-
-def make_response_matrix(zernike_chops, control_mask, flux_mode=None, shear_chops=None,):
-    """_summary_
-
-    Parameters
-    ----------
-    zernike_chop_ims : np.ndarray
-        Data cube containing the difference images for each zernike mode
-    control_mask : _type_
-        _description_
-    flux_mode : _type_, optional
-        _description_, by default None
-    shear_chops : _type_, optional
-        _description_, by default None
-
-    Returns
-    -------
-    _type_
-        _description_
-    """
-
-    Nmask = int(control_mask.sum())
-    Nz_modes = zernike_chops.shape[0]
-    Nmodes = Nz_modes + 2
-    if shear_chops is None:
-        shear_chop = xp.zeros_like(zernike_chops[0])
-        shear_chops = xp.array([shear_chop, shear_chop])
-    # if flux_mode is None:
-    #     flux_mode = np.zeros_like(zernike_chops[0])
+def calibrate_without_fsm(
+        CAMLO_STREAM,
+        DM_STREAM,
+        NFRAMES, 
+        dm_modes, 
+        control_mask, 
+        amps=2.5e-9, 
+        delay=0.05,
+        plot=False,
+    ):
     
-    response_matrix = xp.zeros((Nmask, Nmodes))
-    for i in range(Nz_modes):
-        response_matrix[:,i] = zernike_chops[i][control_mask]
-    response_matrix[:,-2] = shear_chops[0][control_mask]
-    response_matrix[:,-1] = shear_chops[1][control_mask]
-    # response_matrix[:,-1] = flux_mode[control_mask]
-
-    return response_matrix
-
-def reconstruct(locam_im, control_matrix, ref_im, verbose=False):
-
-    del_im = locam_im - ref_im
-    coeff = control_matrix.dot(del_im)
-
-    return coeff
-
-def update_locam_delta(response_matrix, modal_matrix, control_mask, dh_channel, locam_delta_channel,):
-    del_ref_im = np.zeros(locam_delta_channel.shape)
-    del_ref_im[control_mask] = response_matrix.dot(modal_matrix.dot(1e-6*dh_channel.grab_latest().ravel())/1024)
-    locam_delta_channel.write(del_ref_im)
-    return
-
-def inject_wfe(wfe_time_series, wfe_modes, freq, wfe_channel):
-    Nsamps = wfe_time_series.shape[1]
-    try:
-        print('Injecting WFE ...')
-        i = 0
-        while i<Nsamps+1:
-            if i==Nsamps:
-                i = 0
-            wfe = np.sum( wfe_time_series[:, i, None, None] * wfe_modes, axis=0)
-            wfe_channel.write(1e6 * wfe)
-            time.sleep(1/freq)
-            i += 1
-            # print(i)
-    except KeyboardInterrupt:
-        print('Stopped injecting WFE.')
-        wfe_channel.write(np.zeros(wfe_channel.shape))
-
-def calibrate_without_fsm(I, control_mask, dm_modes, amps=5e-9, plot=False):
-    # time.sleep(2)
     Nmask = int(control_mask.sum())
     Nmodes = dm_modes.shape[0]
+    Nact = dm_modes.shape[1]
+    Ncamlo = CAMLO_STREAM.shape[0]
     if np.isscalar(amps):
         amps = [amps] * Nmodes
 
-    if isinstance(control_mask, np.ndarray):
-        responses = np.zeros((Nmodes, Nmask))
-    else:
-        responses = xp.zeros((Nmodes, Nmask))
+    response_matrix = np.zeros((Nmask, Nmodes))
+    response_cube = np.zeros((Nmodes, Ncamlo, Ncamlo))
     
     start = time.time()
     for i in range(Nmodes):
         amp = amps[i]
-        mode = dm_modes[i]
+        mode = amp*dm_modes[i]
 
-        I.add_dm(amp*mode)
-        im_pos = I.snap_locam()
-        I.add_dm(-2*amp*mode)
-        im_neg = I.snap_locam()
-        I.add_dm(amp*mode)
+        DM_STREAM.write( mode * 1e6 )
+        time.sleep(delay)
+        im_pos = np.mean( CAMLO_STREAM.grab_many(NFRAMES), axis=0)
+
+        DM_STREAM.write( -mode * 1e6 )
+        time.sleep(delay)
+        im_neg = np.mean( CAMLO_STREAM.grab_many(NFRAMES), axis=0)
+
+        DM_STREAM.write(np.zeros((Nact,Nact)))
 
         diff = im_pos - im_neg
-        responses[i] = copy.copy(diff)[control_mask]/(2 * amp)
+        response_cube[i] = copy.copy(diff) / (2 * amp)
+        response_matrix[:,i] = copy.copy(diff)[control_mask] / (2 * amp)
         
-        if plot:
-            imshow3(amp*mode, im_pos, diff, f'Mode {i+1}', 'Absolute Image', 'Difference', cmap1='viridis')
-        
-        print(f"\tCalibrated mode {i+1:d}/{dm_modes.shape[0]:d} in {time.time()-start:.3f}s", end='')
+        if plot: 
+            print(f"Calibrated mode {i+1:d}/{Nmodes:d} in {time.time()-start:.3f}s", end='')
+            utils.imshow(
+                [amp*mode, im_pos, diff], 
+                titles=[f'Mode {i+1}', 'Positive Chop Image', 'Difference'], 
+                cmaps=['viridis'],
+            )
+        else:
+            print(f"\tCalibrated mode {i+1:d}/{Nmodes:d} in {time.time()-start:.3f}s", end='')
+            print("\r", end="")
+
+    return response_matrix, response_cube
+
+def calibrate_with_fsm(
+        CAMLO_STREAM,
+        FSM_STREAM,
+        DM_STREAM,
+        NFRAMES, 
+        dm_zer_modes, 
+        control_mask, 
+        fsm_beam_diam,
+        amps=2.5e-9,
+        include_factor_2=False,
+        flux_norm_coeff=None, 
+        delay=0.05,
+        plot=False,
+    ):
+    
+    Nmask = int(control_mask.sum())
+    Nmodes = 2 + dm_zer_modes.shape[0]
+    Nact = DM_STREAM.shape[0]
+    Ncamlo = CAMLO_STREAM.shape[0]
+    if np.isscalar(amps): amps = [amps] * Nmodes
+
+    response_matrix = np.zeros((Nmask, Nmodes))
+    response_cube = np.zeros((Nmodes, Ncamlo, Ncamlo))
+    
+    start = time.time()
+    for i in range(Nmodes):
+        print(f"\tCalibrating Zernike mode {i+1:d}/{Nmodes:d}s", end='')
         print("\r", end="")
+        if i==0:
+            amp = amps[i]
+            amp_as = utils.tt_rms_to_as(amp, fsm_beam_diam)
+            fsm_command = np.array([0, amp_as, 0])
+            shmim_utils.write(FSM_STREAM, fsm_command)
+            time.sleep(delay)
+            im_pos = shmim_utils.stack(CAMLO_STREAM, NFRAMES)
+            shmim_utils.write(FSM_STREAM, -fsm_command)
+            time.sleep(delay)
+            im_neg = shmim_utils.stack(CAMLO_STREAM, NFRAMES)
+            shmim_utils.write(FSM_STREAM, [0,0,0])
+        elif i==1:
+            amp = amps[i]
+            amp_as = utils.tt_rms_to_as(amp, fsm_beam_diam)
+            fsm_command = np.array([0, 0, amp_as])
+            shmim_utils.write(FSM_STREAM, fsm_command)
+            time.sleep(delay)
+            im_pos = shmim_utils.stack(CAMLO_STREAM, NFRAMES)
+            shmim_utils.write(FSM_STREAM, -fsm_command)
+            time.sleep(delay)
+            im_neg = shmim_utils.stack(CAMLO_STREAM, NFRAMES)
+            shmim_utils.write(FSM_STREAM, [0,0,0])
+        else:
+            amp = amps[i]
+            mode = amp*dm_zer_modes[i-2]
+            DM_STREAM.write( mode * 1e6 )
+            time.sleep(delay)
+            im_pos = shmim_utils.stack(CAMLO_STREAM, NFRAMES)
+            DM_STREAM.write( -mode * 1e6 )
+            time.sleep(delay)
+            im_neg = shmim_utils.stack(CAMLO_STREAM, NFRAMES)
+            DM_STREAM.write(np.zeros((Nact,Nact)))
 
-    response_matrix = responses.T
+        diff = im_pos - im_neg
+        response_cube[i] = copy.copy(diff) / (2 * amp)
+        response_matrix[:,i] = copy.copy(diff)[control_mask] / (2 * amp)
 
-    return response_matrix
+        if plot: 
+            utils.imshow(
+                [im_pos, im_neg, diff], 
+                titles=['Positive Chop', 'Negative Chop', 'Difference'], 
+            )
+    # response_matrix = response_matrix.T
 
-def single_iteration(
-    I,
-    locam_ref_channel,
-    locam_delta_channel,  
-    gain_channel, 
-    control_matrix, 
-    modal_matrix,
-    control_mask, 
-    thresh=0,
-    leakage=0.0, 
-    plot=False,
-    clear=False,
+    if include_factor_2: # in case you want to account for reflection off your FSM/DM
+        response_matrix /= 2
+
+    if flux_norm_coeff is not None:
+        response_matrix /= flux_norm_coeff
+    
+    return response_matrix, response_cube
+
+def make_shear_chops(camlo_ref, control_mask, shear_pix=1/2, order=3, central_diff=False, return_np=False, plot=False):
+    ncamlo = camlo_ref.shape[0]
+    shear_chops = xp.zeros((2, ncamlo, ncamlo))
+    if central_diff:
+        shear_chops_x1 = ( xcipy.ndimage.shift(camlo_ref, (0,shear_pix), order=order))
+        shear_chops_x2 = ( xcipy.ndimage.shift(camlo_ref, (0,-shear_pix), order=order)) 
+        shear_chops[0] = ( shear_chops_x1 - shear_chops_x2 ) / (2*shear_pix)
+
+        shear_chops_y1 = ( xcipy.ndimage.shift(camlo_ref, (shear_pix,0), order=order) )
+        shear_chops_y2 = ( xcipy.ndimage.shift(camlo_ref, (-shear_pix,0), order=order))
+        shear_chops[1] = ( shear_chops_y1 - shear_chops_y2 ) / (2*shear_pix)
+
+    else:
+        shear_chops_x = ( xcipy.ndimage.shift(copy.copy(camlo_ref), (0,shear_pix), order=order))
+        shear_chops_y = ( xcipy.ndimage.shift(copy.copy(camlo_ref), (shear_pix,0), order=order))
+
+        shear_chops[0] = ( shear_chops_x - camlo_ref ) / shear_pix
+        shear_chops[1] = ( shear_chops_y - camlo_ref ) / shear_pix
+    shear_chops[:] *= control_mask
+    shear_responses = shear_chops[:, control_mask].T
+    if plot: 
+        utils.imshow([shear_chops[0], shear_chops[1]])
+
+    if return_np: 
+        return ensure_np_array(shear_responses), ensure_np_array(shear_chops)
+    return shear_responses, shear_chops
+
+def plot_responses(
+        dm_modes, 
+        response_cube, 
+        figsize=(25,5),
+        dpi=125,
+        hspace=0.0,
+        wspace=-0.05,
+        title=None,
+        title_fs=14,
+    ):
+    fig = plt.figure(figsize=figsize, dpi=dpi)
+    gs = GridSpec(2, 10, figure=fig)
+    fig.suptitle(title, fontsize=title_fs)
+
+    for i in range(10):
+        mode = ensure_np_array(dm_modes[i])
+        response = ensure_np_array(response_cube[i])
+
+        ax = fig.add_subplot(gs[0, i])
+        ax.imshow(mode, cmap='viridis')
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        ax = fig.add_subplot(gs[1, i])
+        ax.imshow(response, cmap='magma',)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    plt.subplots_adjust(hspace=hspace, wspace=wspace)
+
+def compute_without_fsm_ff_offset(
+        CAMLO_STREAM,
+        DM_STREAM,
+        LLOWFSC_REF_STREAM,
+        LLOWFSC_GAINS_STREAM,
+        OFFSET_STREAMS,
+        P, 
+        llowfsc_mask, 
+        dm_modes, 
+        dark_im,
+        leakage=0.0,
+    ):
+    camlo_im = (CAMLO_STREAM.grab_after(1, 0)[0] - dark_im)
+    camlo_im /= camlo_im[llowfsc_mask].sum()
+    del_im = camlo_im - LLOWFSC_REF_STREAM.grab_latest()
+    
+    recon_coeff = 1e6*P.dot(del_im[llowfsc_mask])
+    ff_offsets = np.sum([OFFSET_STREAM.grab_latest()[0] for OFFSET_STREAM in OFFSET_STREAMS], axis=0)
+    coeff_with_offset = recon_coeff - ff_offsets
+    modal_coeff = - LLOWFSC_GAINS_STREAM.grab_latest()[0] * coeff_with_offset[:]
+
+    del_dm_coeff = modal_coeff[:]
+    del_dm_command = np.sum( del_dm_coeff[:, None, None] * dm_modes, axis=0)
+    total_lo_dm = (1 - leakage) * DM_STREAM.grab_latest() + del_dm_command
+    DM_STREAM.write(total_lo_dm)
+
+    return
+
+def compute_without_fsm_ref_offset(
+        CAMLO_STREAM,
+        DM_STREAM,
+        LLOWFSC_REF_STREAM,
+        LLOWFSC_GAINS_STREAM,
+        REF_OFFSET_STREAM,
+        P, 
+        llowfsc_mask, 
+        dm_modes, 
+        dark_im,
+        leakage=0.0,
+    ):
+    camlo_im = (CAMLO_STREAM.grab_after(1, 0)[0] - dark_im)
+    camlo_im /= camlo_im[llowfsc_mask].sum()
+    del_im = camlo_im - LLOWFSC_REF_STREAM.grab_latest() - REF_OFFSET_STREAM.grab_latest()
+    
+    recon_coeff = 1e6*P.dot(del_im[llowfsc_mask])
+    coeff_with_offset = recon_coeff
+    modal_coeff = - LLOWFSC_GAINS_STREAM.grab_latest()[0] * coeff_with_offset[:]
+
+    del_dm_coeff = modal_coeff[:]
+    del_dm_command = np.sum( del_dm_coeff[:, None, None] * dm_modes, axis=0)
+    total_lo_dm = (1 - leakage) * DM_STREAM.grab_latest() + del_dm_command
+    DM_STREAM.write(total_lo_dm)
+
+    return
+
+def compute_with_fsm_ff_offset(
+        CAMLO_STREAM,
+        FSM_STREAM,
+        DM_STREAM,
+        LLOWFSC_REF_STREAM,
+        LLOWFSC_GAINS_STREAM,
+        OFFSET_STREAMS,
+        P,
+        Nz_modes,
+        llowfsc_mask, 
+        dm_modes, 
+        fsm_beam_diam,
+        dark_im,
+        leakage=0.0,
+    ):
+    camlo_im = CAMLO_STREAM.grab_after(1, 0)[0] - dark_im
+    camlo_im /= camlo_im[llowfsc_mask].sum()
+    del_im = camlo_im - LLOWFSC_REF_STREAM.grab_latest()
+    
+    recon_coeff = P.dot(del_im[llowfsc_mask])
+    zer_coeff = recon_coeff[:Nz_modes]
+    ff_offsets = np.sum([OFFSET_STREAM.grab_latest()[0] for OFFSET_STREAM in OFFSET_STREAMS], axis=0) / 1e6
+    coeff_with_offset = zer_coeff - ff_offsets
+    modal_coeff = - LLOWFSC_GAINS_STREAM.grab_latest()[0] * coeff_with_offset
+
+    del_fsm_coeff = modal_coeff[:2]
+    del_fsm_as = utils.tt_rms_to_as(del_fsm_coeff, fsm_beam_diam)
+    del_fsm_command = np.array([0, del_fsm_as[0], del_fsm_as[1]])
+    total_fsm_command = (1 - leakage) * FSM_STREAM.grab_latest() + del_fsm_command
+    FSM_STREAM.write(total_fsm_command)
+
+    del_dm_coeff = modal_coeff[2:]
+    del_dm_command = np.sum( del_dm_coeff[:, None, None] * dm_modes, axis=0)
+    total_lo_dm = (1 - leakage) * DM_STREAM.grab_latest() + del_dm_command * 1e6
+    DM_STREAM.write(total_lo_dm)
+
+    return
+
+def update_dm_ff_offset(
+        DM_STREAM,
+        DM_OFFSET_STREAM,
+        z_pinv,
+        factor=2,
     ):
 
-    image = I.snap_locam()
-    del_im = image - (locam_ref_channel.grab_latest() + locam_delta_channel.grab_latest())
-
-    # compute the DM command with the image based on the time delayed wavefront
-    modal_coeff = - control_matrix.dot( del_im[control_mask] )
-    modal_coeff *= np.abs(modal_coeff) >= thresh
-    modal_coeff *= gain_channel.grab_latest()[0]
-    del_dm_command = modal_matrix.T.dot(modal_coeff).reshape(I.Nact,I.Nact)
-    # I.add_dm(del_dm_command)
-
-    total_command = (1-leakage) * ensure_np_array(I.get_dm()) + del_dm_command
-    I.set_dm(total_command)
-
-    if plot:
-        dm_command = I.get_dm()
-        pv_stroke = xp.max(dm_command) - xp.min(dm_command)
-        rms_stroke = xp.sqrt(xp.mean(xp.square(dm_command[I.dm_mask])))
-        imshow3(del_im, del_dm_command, dm_command, 
-                'Measured Difference Image', 
-                'Computed DM Correction',
-                f'PV Stroke = {1e9*pv_stroke:.1f}nm\nRMS Stroke = {1e9*rms_stroke:.1f}nm', 
-                cmap1='magma', cmap2='viridis', cmap3='viridis',
-                )
-        if clear: clear_output(wait=True)
-
-
-
+    dm_offset_coeff = factor * z_pinv.dot(DM_STREAM.grab_latest().ravel()) # DM command should already be in terms of microns
+    DM_OFFSET_STREAM.write( dm_offset_coeff[:,None].T )
 
 
