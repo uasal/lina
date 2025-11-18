@@ -48,13 +48,22 @@ def run(
         E_FP_NOM = M.forward(current_acts, M.wavelength_c, use_vortex=True, return_ints=False)
         pwp_params.update({'E_FP_NOM':E_FP_NOM})
 
-        E_ab, _ = pwp.run_with_model(
+        # E_ab, _ = pwp.run_with_model(
+        #     CAMSCI_STREAM,
+        #     DM_STREAM, 
+        #     im_params,
+        #     ref_psf_params,
+        #     M=M, 
+        #     **pwp_params,
+        # )
+
+        E_ab, _ = pwp.run(
             CAMSCI_STREAM,
             DM_STREAM, 
             im_params,
             ref_psf_params,
-            M,
             **pwp_params,
+            # M=M, 
         )
 
         rmad_vars= {

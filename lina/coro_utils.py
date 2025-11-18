@@ -19,10 +19,11 @@ except ImportError:
     print('SCoOB interface does not have the required packages to operate.')
 
 def normalize_coro_im(raw_im, im_params, ref_params, dark_im=0.0):
-    exp_time_factor = ref_params['exp_time'] / im_params['exp_time']
-    gain_factor = 10**(ref_params['gain']/20 * 0.1) / 10**(im_params['gain']/20 * 0.1)
+    exp_time_factor = ref_params['exp_time'] / im_params['exp_time'] if 'exp_time' in ref_params.keys() else 1.0
+    gain_factor = 10**(ref_params['gain']/20 * 0.1) / 10**(im_params['gain']/20 * 0.1) if 'gain' in ref_params.keys() else 1.0
+    fiber_atten_factor = 10**(-ref_params['atten']/10) / 10**(-im_params['atten']/10) if 'atten' in ref_params.keys() else 1.0
     ds_im = (raw_im - dark_im) 
-    ni_im = ds_im * exp_time_factor * gain_factor / ref_params['Imax']
+    ni_im = ds_im * exp_time_factor * gain_factor * fiber_atten_factor / ref_params['Imax']
     return ni_im
 
 def compute_contrast(ni_im, mask, ):
