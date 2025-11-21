@@ -39,6 +39,7 @@ class MODEL():
             dm_beam_diam = 9.3e-3,
             lyot_beam_diam=4.153e-3,
             lyot_diam=3.7e-3,
+            exit_pupil_prop_dist=None, 
             camsci_pxscl_lamDc=0.2,
             ncamsci=256,
             Nact=34,
@@ -52,9 +53,10 @@ class MODEL():
         self.wavelength = wavelength
         # self.fsm_beam_diam = fsm_beam_diam
         self.dm_beam_diam = dm_beam_diam # as measured in the Fresnel model
-        self.lyot_pupil_diam = lyot_beam_diam
+        self.lyot_beam_diam = lyot_beam_diam
         self.lyot_diam = lyot_diam
-        self.lyot_ratio = self.lyot_diam/self.lyot_pupil_diam
+        self.lyot_ratio = self.lyot_diam/self.lyot_beam_diam
+        self.exit_pupil_prop_dist = exit_pupil_prop_dist
         self.camsci_pxscl_lamDc = camsci_pxscl_lamDc
         self.camsci_pxscl_lamD = self.camsci_pxscl_lamDc * self.wavelength_c/self.wavelength
 
@@ -73,10 +75,12 @@ class MODEL():
 
         self.Imax_ref = 1.0
 
+        self.exit_pupil_pxscl = self.lyot_beam_diam / self.npix
+
         ### INITIALIZE APERTURES ###
-        pwf = poppy.FresnelWavefront(beam_radius=self.lyot_pupil_diam/2 * u.m, npix=self.npix, oversample=self.def_oversample)
-        self.APERTURE = poppy.CircularAperture(radius=self.lyot_pupil_diam/2 * u.m).get_transmission(pwf)
-        self.LYOTSTOP = poppy.CircularAperture(radius=self.lyot_ratio * self.lyot_pupil_diam/2 * u.m).get_transmission(pwf)
+        pwf = poppy.FresnelWavefront(beam_radius=self.lyot_beam_diam/2 * u.m, npix=self.npix, oversample=self.def_oversample)
+        self.APERTURE = poppy.CircularAperture(radius=self.lyot_beam_diam/2 * u.m).get_transmission(pwf)
+        self.LYOTSTOP = poppy.CircularAperture(radius=self.lyot_ratio * self.lyot_beam_diam/2 * u.m).get_transmission(pwf)
 
         self.PREFPM_AMP = PREFPM_AMP if PREFPM_AMP is not None else xp.ones_like(self.APERTURE)
         self.PREFPM_OPD = PREFPM_OPD if PREFPM_OPD is not None else xp.zeros_like(self.APERTURE)
@@ -215,8 +219,15 @@ class MODEL():
 
         E_LS = self.LYOTSTOP.astype(xp.complex128) * E_LP
 
+        if self.exit_pupil_prop_dist is not None:
+            E_LS = utils.pad_or_crop(E_LS, 2*self.Ndef)
+            E_FFFP = props.ang_spec(E_LS, wavelength, self.exit_pupil_prop_dist, self.exit_pupil_pxscl) # Final Front Focal Point
+            # E_FFFP = utils.pad_or_crop(E_FFFP, self.Ndef)
+        else:
+            E_FFFP = copy.copy(E_LS)
+
         camsci_pxscl_lamD = self.camsci_pxscl_lamDc * self.wavelength_c/wavelength
-        E_FP = props.mft_forward(E_LS, self.npix * self.lyot_ratio, self.ncamsci, camsci_pxscl_lamD)
+        E_FP = props.mft_forward(E_FFFP, self.npix * self.lyot_ratio, self.ncamsci, camsci_pxscl_lamD)
         E_FP = xcipy.ndimage.rotate(E_FP, self.camsci_rotation, reshape=False, order=5)
 
         if use_vortex and plot: 
@@ -226,15 +237,17 @@ class MODEL():
                  xp.abs(E_LP_lres), xp.angle(E_LP_lres),
                  xp.abs(E_LP_hres), xp.angle(E_LP_hres),
                  xp.abs(E_LP), xp.angle(E_LP),
+                 xp.abs(E_LS), xp.angle(E_LS),
+                 xp.abs(E_FFFP), xp.angle(E_FFFP),
                  xp.abs(E_FP)**2, xp.angle(E_FP),], 
                 titles=[
                     'EP Amplitude', 'EP Phase',
                 ],
                 # npix=8*[int(1.2*self.npix)], 
                 cmaps=8*['plasma', 'twilight'],
-                norms=5*[None,None] + [LogNorm(xp.max(xp.abs(E_FP)**2)/1e6), None],
-                Nrows=6, Ncols=2,
-                figsize=(12,30),
+                norms=7*[None,None] + [LogNorm(xp.max(xp.abs(E_FP)**2)/1e6), None],
+                Nrows=8, Ncols=2,
+                figsize=(12,42),
                 hspace=0.2, wspace=0.2, 
             )
 
@@ -293,7 +306,14 @@ def val_and_grad(
     dJ_ddeltaE = 2 * E_predicted_masked / E_ab_l2norm
 
     camsci_pxscl_lamD = M.camsci_pxscl_lamDc * M.wavelength_c/wavelength
-    dJ_dE_LS = props.mft_reverse(dJ_ddeltaE, camsci_pxscl_lamD, M.npix * M.lyot_ratio, M.Ndef, convention='+')
+    dJ_dE_FFFP = props.mft_reverse(dJ_ddeltaE, camsci_pxscl_lamD, M.npix * M.lyot_ratio, 2*M.Ndef, convention='+')
+
+    if M.exit_pupil_prop_dist is not None:
+        # dJ_dE_FFFP = utils.pad_or_crop(dJ_dE_FFFP, 2*M.Ndef)
+        dJ_dE_LS = props.ang_spec(dJ_dE_FFFP, wavelength, -M.exit_pupil_prop_dist, M.exit_pupil_pxscl)
+        dJ_dE_LS = utils.pad_or_crop(dJ_dE_LS, M.Ndef)
+    else:
+        dJ_dE_LS = copy.copy(dJ_dE_FFFP)
 
     dJ_dE_LP = dJ_dE_LS * M.LYOTSTOP.astype(xp.complex128)
     # if M.flip_lyot: dJ_dE_LP = xp.fliplr(dJ_dE_LP)
@@ -327,6 +347,7 @@ def val_and_grad(
     if plot: 
         utils.imshow(
             [xp.abs(dJ_ddeltaE)**2, xp.angle(dJ_ddeltaE),
+            xp.abs(dJ_dE_FFFP), xp.angle(dJ_dE_FFFP),
             xp.abs(dJ_dE_LS), xp.angle(dJ_dE_LS),
             xp.abs(dJ_dE_LP), xp.angle(dJ_dE_LP),
             xp.abs(dJ_dE_PUP_fft), xp.angle(dJ_dE_PUP_fft),
@@ -340,8 +361,8 @@ def val_and_grad(
             # npix=8*[int(1.2*self.npix)], 
             cmaps=8*['plasma', 'twilight'],
             norms=[LogNorm(xp.max(xp.abs(dJ_ddeltaE)**2)/1e5)],
-            Nrows=8, Ncols=2,
-            figsize=(12,40),
+            Nrows=9, Ncols=2,
+            figsize=(12,48),
             hspace=0.2, wspace=0.2, 
         )
 
@@ -362,7 +383,7 @@ def val_and_grad_bb(
     ):
     # del_acts, M, actuators, E_ab, control_mask, wavelength, r_cond,
     Nwaves = len(waves)
-    E_abs = xp.array(E_abs)
+
     del_acts_waves = del_acts/M.wavelength_c
 
     r_cond_mono = 0
@@ -383,14 +404,9 @@ def val_and_grad_bb(
             plot=plot, 
             fancy_plot=fancy_plot,
         )
+        
         J_monos[i] = J_mono
         dJ_dA_monos[i] = dJ_dA_mono
-
-    # imshows.imshow1(acts_to_command(dJ_dA_monos[2] - dJ_dA_monos[0], M.dm_mask))
-
-    if weights is None: 
-        weights = np.array(Nwaves*[1])
-        # TODO: implement weights for each wavelength correctly
 
     J_bb = np.sum(J_monos)/Nwaves + r_cond * del_acts_waves.dot(del_acts_waves)
     dJ_dA_bb = np.sum(dJ_dA_monos, axis=0) + ensure_np_array( r_cond * 2*del_acts_waves )
