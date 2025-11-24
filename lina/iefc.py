@@ -11,8 +11,8 @@ import matplotlib.pyplot as plt
 plt.rcParams['image.origin'] = 'lower'
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colors import LogNorm, Normalize, CenteredNorm
-
-def take_measurement(
+    
+def measure_probe_response(
         CAMSCI_STREAM, 
         NCAMSCI,
         DM_STREAM, 
@@ -108,7 +108,7 @@ def calibrate(
             DM_STREAM.write( (current_command + s * calib_mode*1e6))
             time.sleep(delay)
             # Compute reponse with difference images of probes
-            probed_diffs = take_measurement(
+            probed_diffs = measure_probe_response(
                 CAMSCI_STREAM, 
                 NCAMSCI,
                 DM_STREAM, 
@@ -188,7 +188,7 @@ def run(iefc_data,
 
     for i in range(num_iterations):
         print(f"Running iteration {i+starting_itr} / {num_iterations+starting_itr-1}")
-        diff_ims = take_measurement(
+        diff_ims = measure_probe_response(
             CAMSCI_STREAM, 
             NCAMSCI,
             DM_STREAM, 
@@ -271,7 +271,98 @@ def compute_hadamard_scale_factors(had_modes, scale_exp=1/6, scale_thresh=4, iwa
 
     return scale_factors
 
+def run_bb(
+        iefc_data,
+        CAMSCI_STREAM,
+        NCAMSCI,
+        DM_STREAM,
+        im_params,
+        ref_psf_params, 
+        dark_im, 
+        control_matrix,
+        probe_amplitude, 
+        probe_modes, 
+        calib_modes,
+        control_mask,
+        waves,
+        client,
+        dm_delay=0.05,
+        filter_delay=3.0,
+        num_iterations=3,
+        gain=1.0, 
+        leakage=0.0,
+        plot_current=True,
+        plot_all=False,
+        vmin=1e-9,
+    ):
+    
+    start = time.time()
+    starting_itr = len(iefc_data['images'])
 
+    Nact = probe_modes.shape[1]
+    Nmodes = calib_modes.shape[0]
+    modal_matrix = calib_modes.reshape(Nmodes, -1).T
+
+    Nprobes = probe_modes.shape[0]
+    Nmask = int(np.sum(control_mask))
+    Nwaves = len(waves)
+
+    total_command = DM_STREAM.grab_latest() / 1e6
+
+    for i in range(num_iterations):
+        print(f"Running iteration {i+starting_itr} / {num_iterations+starting_itr-1}")
+        measurement_vector_bb = np.zeros(Nwaves*Nprobes*Nmask)
+        for j in range(Nwaves):
+            # SET FILTER TO CORRECT POSITION
+            coro_utils.switch_filter_stage(j+1, client, filter_delay)
+            
+            diff_ims_nb = measure_probe_response(
+                CAMSCI_STREAM, 
+                NCAMSCI,
+                DM_STREAM, 
+                im_params[j + 1],
+                ref_psf_params[j + 1],
+                probe_modes,
+                probe_amplitude, 
+                delay=dm_delay,
+            )
+
+            measurement_vector_nb = diff_ims_nb[:, control_mask].ravel()
+            measurement_vector_bb[j**Nprobes*Nmask:(j+1)*Nprobes*Nmask] = measurement_vector_nb
+        
+        coro_utils.switch_filter_stage(1, client, filter_delay)
+
+        modal_coeff = -control_matrix.dot(measurement_vector_bb)
+        del_command = gain * modal_matrix.dot(modal_coeff).reshape(Nact, Nact)
+        total_command = (1.0 - leakage) * total_command + del_command
+        
+        DM_STREAM.write( total_command * 1e6 )
+        time.sleep(dm_delay)
+
+        print(f"Measuring dark hole state ...")
+        coro_im = np.mean(CAMSCI_STREAM.grab_many(NCAMSCI), axis=0)
+        coro_im_ni = coro_utils.normalize_coro_im(coro_im, im_params, ref_psf_params, dark_im)
+        contrast = coro_utils.compute_contrast(coro_im_ni, control_mask)
+
+        iefc_data['images'].append(copy.copy(coro_im_ni))
+        iefc_data['contrasts'].append(copy.copy(contrast))
+        iefc_data['commands'].append(copy.copy(total_command))
+        iefc_data['del_commands'].append(copy.copy(del_command))
+    
+        if plot_current: 
+            if not plot_all: clear_output(wait=True)
+            utils.imshow(
+                [del_command, total_command, coro_im_ni], 
+                titles=[f'Iteration {starting_itr + i:d}: $\delta$DM', 
+                        'Total DM Command', 
+                        f'Normalized Image\nMean Contrast = {contrast:.3e}'],
+                cmaps=['viridis', 'viridis', 'magma'],
+                pxscls=[None, None, None],
+                norms=[CenteredNorm(), None, LogNorm(vmin=vmin)],
+            )
+
+    print(f'Completed {num_iterations:d} iterations in {time.time()-start:.3f}s.')
+    return iefc_data
 
 
 

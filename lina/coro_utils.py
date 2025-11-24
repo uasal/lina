@@ -54,6 +54,26 @@ def move_block_out(client, delay=2):
     client['stagelinear.presetName.block_out'] = purepyindi.SwitchState.ON
     time.sleep(delay)
 
+def home_filter_stage(client, delay=2):
+    client.wait_for_properties(['rotationStageCtrl.home'])
+    client['rotationStageCtrl.home'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+def set_filter_stage_velocity(vel, client, delay=2):
+    client.wait_for_properties(['rotationStageCtrl.velocity'])
+    client['rotationStageCtrl.velocity.target'] = vel
+    time.sleep(delay)
+
+def set_filter_stage_position(angle, client, delay=2):
+    client.wait_for_properties(['rotationStageCtrl.absDeg'])
+    client['rotationStageCtrl.absDeg.target'] = angle
+    time.sleep(delay)
+
+def switch_filter_stage(filter_index, client, delay=2):
+    client.wait_for_properties(['rotationStageCtrl.stageGoto'])
+    client[f'rotationStageCtrl.stageGoto.filter{filter_index}'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
 def set_zwo_bin(bin, client, delay=0.25):
     # update roi parameters
     client.wait_for_properties(['camsci.roi_region_bin_x' ,'camsci.roi_region_bin_y', 
