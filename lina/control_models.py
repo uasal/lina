@@ -314,6 +314,7 @@ def val_and_grad(
         dJ_dE_LS = utils.pad_or_crop(dJ_dE_LS, M.Ndef)
     else:
         dJ_dE_LS = copy.copy(dJ_dE_FFFP)
+        dJ_dE_LS = utils.pad_or_crop(dJ_dE_LS, M.Ndef)
 
     dJ_dE_LP = dJ_dE_LS * M.LYOTSTOP.astype(xp.complex128)
     # if M.flip_lyot: dJ_dE_LP = xp.fliplr(dJ_dE_LP)
