@@ -30,15 +30,15 @@ class MODEL():
             self,
             wavelength_c=630e-9,
             wavelength=630e-9, 
-            npix=1000,
-            Ndef=1002,
-            N_vortex_lres = 4096,
-            vortex_win_diam = 30, # diameter of the Tukey window in lambda/D to apply for the vortex model 
-            vortex_hres_sampling = 0.025, # lam/D per pixel; this value is chosen empirically
-            vortex_dot_mask_diam_lamDc = 0.2,
-            dm_beam_diam = 9.3e-3,
-            lyot_beam_diam=4.153e-3,
-            lyot_diam=3.7e-3,
+            npix=500,
+            Ndef=502,
+            N_vortex_lres=2048,
+            vortex_win_diam=30, # diameter of the Tukey window in lambda/D to apply for the vortex model 
+            vortex_hres_sampling=0.025, # lam/D per pixel; this value is chosen empirically
+            vortex_dot_mask_diam_lamDc=0.5,
+            dm_beam_diam=9.3e-3,
+            lyot_pupil_diam=9.1e-3,
+            lyot_stop_diam=8.6e-3,
             exit_pupil_prop_dist=None, 
             camsci_pxscl_lamDc=0.2,
             ncamsci=256,
@@ -53,9 +53,9 @@ class MODEL():
         self.wavelength = wavelength
         # self.fsm_beam_diam = fsm_beam_diam
         self.dm_beam_diam = dm_beam_diam # as measured in the Fresnel model
-        self.lyot_beam_diam = lyot_beam_diam
-        self.lyot_diam = lyot_diam
-        self.lyot_ratio = self.lyot_diam/self.lyot_beam_diam
+        self.lyot_pupil_diam = lyot_pupil_diam
+        self.lyot_stop_diam = lyot_stop_diam
+        self.lyot_ratio = self.lyot_stop_diam/self.lyot_pupil_diam
         self.exit_pupil_prop_dist = exit_pupil_prop_dist
         self.camsci_pxscl_lamDc = camsci_pxscl_lamDc
         self.camsci_pxscl_lamD = self.camsci_pxscl_lamDc * self.wavelength_c/self.wavelength
@@ -75,12 +75,12 @@ class MODEL():
 
         self.Imax_ref = 1.0
 
-        self.exit_pupil_pxscl = self.lyot_beam_diam / self.npix
+        self.exit_pupil_pxscl = self.lyot_pupil_diam / self.npix
 
         ### INITIALIZE APERTURES ###
-        pwf = poppy.FresnelWavefront(beam_radius=self.lyot_beam_diam/2 * u.m, npix=self.npix, oversample=self.def_oversample)
-        self.APERTURE = poppy.CircularAperture(radius=self.lyot_beam_diam/2 * u.m).get_transmission(pwf)
-        self.LYOTSTOP = poppy.CircularAperture(radius=self.lyot_ratio * self.lyot_beam_diam/2 * u.m).get_transmission(pwf)
+        pwf = poppy.FresnelWavefront(beam_radius=self.lyot_pupil_diam/2 * u.m, npix=self.npix, oversample=self.def_oversample)
+        self.APERTURE = poppy.CircularAperture(radius=self.lyot_pupil_diam/2 * u.m).get_transmission(pwf)
+        self.LYOTSTOP = poppy.CircularAperture(radius=self.lyot_ratio * self.lyot_pupil_diam/2 * u.m).get_transmission(pwf)
 
         self.PREFPM_AMP = PREFPM_AMP if PREFPM_AMP is not None else xp.ones_like(self.APERTURE)
         self.PREFPM_OPD = PREFPM_OPD if PREFPM_OPD is not None else xp.zeros_like(self.APERTURE)

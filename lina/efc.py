@@ -68,13 +68,14 @@ def run(
 
         current_command = DM_STREAM.grab_latest() / 1e6
 
-        E_ab_est, E_ab_est_vec = pwp.run_with_jacobian(
+        E_ab_est, E_ab_est_vec = pwp.run(
             CAMSCI_STREAM,
             DM_STREAM, 
             im_params,
             ref_psf_params,
             **pwp_params,
         )
+
         E_ab_vec[::2] = xp.real(E_ab_est_vec)
         E_ab_vec[1::2] = xp.imag(E_ab_est_vec)
 
