@@ -27,8 +27,8 @@ def normalize_coro_im(raw_im, im_params, ref_params, dark_im=0.0):
     return ni_im
 
 def compute_contrast(ni_im, mask, ):
-    ni_im_masked = ni_im[mask]
-    ni_im_gtz = ni_im_masked[ni_im_masked>0]
+    ni_im_masked = ni_im[mask] # select pixels in desired mask
+    ni_im_gtz = ni_im_masked[ni_im_masked>0] # select values greater than zero
     contrast = np.mean(ni_im_gtz)
     return contrast
 
