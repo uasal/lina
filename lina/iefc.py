@@ -1,5 +1,5 @@
 from .math_module import xp, xcipy, ensure_np_array
-from esc_llowfsc_sim import utils, coro_utils
+from lina import utils, coro_utils
 
 import numpy as np
 import astropy.units as u
@@ -32,7 +32,6 @@ def measure_probe_response(
     
     all_ims = []
     probed_responses = []
-    ims = []
     for i in range(Nprobes):
         probe = ensure_np_array(probe_amplitude * probe_modes[i])
 
@@ -43,10 +42,6 @@ def measure_probe_response(
         DM_STREAM.write( (current_command - probe)*1e6)
         time.sleep(delay)
         im_neg = np.mean(CAMSCI_STREAM.grab_many(NCAMSCI), axis=0)
-
-        # im_pos_ni = normalize_coro_im(im_pos, im_params, ref_psf_params, dark_im=dark_im)
-        # im_neg_ni = normalize_coro_im(im_neg, im_params, ref_psf_params, dark_im=dark_im)
-        # diff_im_ni = im_pos_ni - im_neg_ni
 
         diff_im = im_pos - im_neg
         diff_im_ni = coro_utils.normalize_coro_im(diff_im, im_params, ref_psf_params, dark_im=0.0)
@@ -79,7 +74,6 @@ def calibrate(
         calibration_amplitude, 
         calibration_modes,
         delay=0.01,
-        dark_im=0.0,
         scale_factors=None, 
         plot_responses=False, 
     ):
@@ -270,6 +264,61 @@ def compute_hadamard_scale_factors(had_modes, scale_exp=1/6, scale_thresh=4, iwa
         plt.show()
 
     return scale_factors
+
+def calibrate_bb(
+        CAMSCI_STREAM, 
+        NCAMSCI,
+        DM_STREAM, 
+        im_params,
+        ref_psf_params,
+        control_mask, 
+        probe_amplitude, 
+        probe_modes, 
+        calibration_amplitude, 
+        calibration_modes,
+        switch_filter_fun,
+        switch_filter_fun_params,
+        delay=0.01,
+        scale_factors=None, 
+        plot_responses=False, 
+    ):
+    print('Calibrating iEFC...')
+
+    Nact = probe_modes.shape[1]
+    Nprobes = probe_modes.shape[0]
+    Nmodes = calibration_modes.shape[0]
+    Nmask = int(control_mask.sum())
+    Ncamsci = CAMSCI_STREAM.shape[0]
+    Nfilters = len(switch_filter_fun_params)
+
+    bb_response_matrix = np.zeros((Nmodes, Nfilters*Nprobes*Nmask))
+    all_response_cubes = []
+    for i in range(Nfilters):
+        switch_filter_fun(**switch_filter_fun_params)
+
+        nb_response_matrix, nb_response_cube = calibrate(
+            CAMSCI_STREAM, 
+            NCAMSCI,
+            DM_STREAM, 
+            im_params,
+            ref_psf_params,
+            control_mask, 
+            probe_amplitude, 
+            probe_modes, 
+            calibration_amplitude, 
+            calibration_modes,
+            delay=delay,
+            scale_factors=scale_factors, 
+            plot_responses=plot_responses, 
+        )
+
+        bb_response_matrix[:,i*Nprobes*Nmask:(i+1)*Nprobes*Nmask] = nb_response_matrix
+        all_response_cubes.append(nb_response_cube)
+    
+    all_response_cubes = np.array(all_response_cubes)
+
+    return bb_response_matrix, all_response_cubes
+
 
 def run_bb(
         iefc_data,
