@@ -168,6 +168,18 @@ def set_cam_blacklevel(val, client, cam_name='camsci', delay=0.1):
     time.sleep(delay)
     print(f'Set the {cam_name} blacklevel to {val:.1f}')
 
+def get_im_params(client, cam_name, verbose=True):
+    client.wait_for_properties([f'{cam_name}.exptime', f'{cam_name}.emgain', 'fiberatten.attenuation.target'])
+    im_params = {
+        'exp_time': get_cam_exp_time(client, cam_name), 
+        'gain': get_cam_gain(client, cam_name),
+        'atten': get_fiber_atten(client),
+    }
+    if verbose:
+        print(
+            f'Image parameters: \n\tExposure time = {im_params["exp_time"]:.2e} s \n\tGain = {im_params["gain"]:.0f} \n\tFiber attenuation = {im_params["atten"]:.1f}'
+        )
+    return im_params
 
 def set_dm(STREAM, command, delay=0.05):
     STREAM.write(1e6*command)
@@ -180,8 +192,6 @@ def add_dm(STREAM, command, delay=0.05):
 def zero_dm(STREAM, delay=0.05):
     STREAM.write(np.zeros(STREAM.shape))
     time.sleep(delay)
-
-
 
 def measure_waffle_center_and_angle(
         waffle_im, 

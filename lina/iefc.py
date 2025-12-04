@@ -207,7 +207,9 @@ def run(iefc_data,
         coro_im_ni = coro_utils.normalize_coro_im(coro_im, im_params, ref_psf_params, dark_im)
         contrast = coro_utils.compute_contrast(coro_im_ni, control_mask)
 
-        iefc_data['images'].append(copy.copy(coro_im_ni))
+        iefc_data['raw_images'].append(copy.copy(coro_im))
+        iefc_data['dark_images'].append(copy.copy(dark_im))
+        iefc_data['ni_images'].append(copy.copy(coro_im_ni))
         iefc_data['contrasts'].append(copy.copy(contrast))
         iefc_data['commands'].append(copy.copy(total_command))
         iefc_data['del_commands'].append(copy.copy(del_command))
