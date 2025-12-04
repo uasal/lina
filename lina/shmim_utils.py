@@ -29,6 +29,9 @@ def zero(STREAMS):
         except:
             STREAM.write(np.zeros(STREAM.shape[::-1]))
 
+def write_dm(STREAM, command):
+    STREAM.write(1e6*np.array([command]))
+
 def stack(
         STREAM, 
         NFRAMES=1, 
