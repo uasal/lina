@@ -29,7 +29,7 @@ class MODEL():
     def __init__(
             self,
             wavelength_c=630e-9,
-            wavelength=630e-9, 
+            wavelength=None, 
             npix=500,
             Ndef=502,
             N_vortex_lres=2048,
@@ -50,7 +50,7 @@ class MODEL():
         ):
 
         self.wavelength_c = wavelength_c
-        self.wavelength = wavelength
+        self.wavelength = wavelength_c if wavelength is None else wavelength
         # self.fsm_beam_diam = fsm_beam_diam
         self.dm_beam_diam = dm_beam_diam # as measured in the Fresnel model
         self.lyot_pupil_diam = lyot_pupil_diam
@@ -84,12 +84,10 @@ class MODEL():
 
         self.PREFPM_AMP = PREFPM_AMP if PREFPM_AMP is not None else xp.ones_like(self.APERTURE)
         self.PREFPM_OPD = PREFPM_OPD if PREFPM_OPD is not None else xp.zeros_like(self.APERTURE)
-        # self.PREFPM_WFE = 
 
-        # self.det_rotation = 0
-        # self.flip_dm = False
-        # self.reverse_lyot = False
-        # self.flip_lyot = False
+        self.flip_dm = False
+        self.reverse_lyot = False
+        self.flip_lyot = False
 
         ### INITIALIZE DM PARAMETERS ###
         self.Nact = Nact
@@ -156,6 +154,7 @@ class MODEL():
         self.windowed_vortex_hres = self.vortex_hres * self.hres_window * self.hres_dot_mask
 
         self.camsci_rotation = 0.0
+        self.camsci_shift = np.array([0, 0])
 
         self.dm_command = xp.zeros((self.Nact, self.Nact))
     
@@ -228,7 +227,7 @@ class MODEL():
 
         camsci_pxscl_lamD = self.camsci_pxscl_lamDc * self.wavelength_c/wavelength
         E_FP = props.mft_forward(E_FFFP, self.npix * self.lyot_ratio, self.ncamsci, camsci_pxscl_lamD)
-        E_FP = xcipy.ndimage.rotate(E_FP, self.camsci_rotation, reshape=False, order=5)
+        E_FP = xcipy.ndimage.rotate(E_FP, self.camsci_rotation, reshape=False, order=3)
 
         if use_vortex and plot: 
             utils.imshow(

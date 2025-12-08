@@ -1,5 +1,5 @@
 from .math_module import xp, xcipy, ensure_np_array
-from esc_llowfsc_sim import utils
+from lina import utils
 
 import numpy as np
 import astropy.units as u

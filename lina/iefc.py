@@ -18,7 +18,6 @@ def measure_probe_response(
         DM_STREAM, 
         im_params,
         ref_psf_params,
-        # dark_im,
         probe_modes,
         probe_amplitude,  
         delay=0.01,
@@ -203,8 +202,9 @@ def run(iefc_data,
         time.sleep(delay)
 
         print(f"Measuring dark hole state ...")
-        coro_im = np.mean(CAMSCI_STREAM.grab_many(NCAMSCI), axis=0)
-        coro_im_ni = coro_utils.normalize_coro_im(coro_im, im_params, ref_psf_params, dark_im)
+        # coro_im = np.mean(CAMSCI_STREAM.grab_many(NCAMSCI), axis=0)
+        # coro_im_ni = coro_utils.normalize_coro_im(coro_im, im_params, ref_psf_params, dark_im)
+        coro_im_ni, coro_im = coro_utils.snap_ni(CAMSCI_STREAM, NCAMSCI, im_params, ref_psf_params, dark_im)
         contrast = coro_utils.compute_contrast(coro_im_ni, control_mask)
 
         iefc_data['raw_images'].append(copy.copy(coro_im))
@@ -228,6 +228,7 @@ def run(iefc_data,
 
     print(f'Completed {num_iterations:d} iterations in {time.time()-start:.3f}s.')
     return iefc_data
+    
 
 def compute_hadamard_scale_factors(had_modes, scale_exp=1/6, scale_thresh=4, iwa=2.5, owa=13, oversamp=4, plot=False):
     Nact = had_modes.shape[1]

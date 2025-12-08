@@ -2,6 +2,7 @@ from .math_module import xp, xcipy, ensure_np_array
 from lina import utils, coro_utils
 
 import numpy as np
+import scipy
 import time
 import copy
 
@@ -25,6 +26,7 @@ def run(
         model=None,
         wavelength=None,
         E_FP_NOM=None,
+        fp_shift=None,
         reg_cond=1e-3, 
         gain=1,
         plot=False,
@@ -55,6 +57,8 @@ def run(
 
         diff_im = im_pos - im_neg
         diff_im_ni = coro_utils.normalize_coro_im(diff_im, im_params, ref_psf_params, dark_im=0.0)
+        if fp_shift is not None:
+            scipy.ndimage.shift(diff_im_ni, (fp_shift[1], fp_shift[0]), order=0)
 
         probe_acts = probe_amp*probes[i][dm_mask]
 

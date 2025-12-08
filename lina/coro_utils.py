@@ -40,16 +40,18 @@ def compute_contrast(ni_im, mask, verbose=True):
     contrast = np.mean(ni_im_gtz)
     return contrast
 
-def snap_ni(STREAM, NFRAMES, im_params, ref_params, dark_im=0.0,):
+def snap_ni(STREAM, NFRAMES, im_params, ref_params, dark_im=0.0, fp_shift=None):
     raw_im = np.mean(STREAM.grab_many(NFRAMES), axis=0)
     ni_im = normalize_coro_im(raw_im, im_params, ref_params, dark_im)
-    return ni_im
+    if fp_shift is not None:
+        scipy.ndimage.shift(ni_im, (fp_shift[1], fp_shift[0]), order=0)
+    return ni_im, raw_im
 
 def move_psf(x_pos, y_pos, client, delay=0.5):
     client.wait_for_properties(['stagepiezo.stagepupil_x_pos', 'stagepiezo.stagepupil_y_pos'])
     # scoob_utils.move_relative(client, 'stagepiezo.stagepupil_x_pos', x_pos)
     client[f'stagepiezo.stagepupil_x_pos.target'] = client[f'stagepiezo.stagepupil_x_pos.current'] + x_pos
-    time.sleep(0.05)
+    time.sleep(delay)
     # scoob_utils.move_relative(client, 'stagepiezo.stagepupil_y_pos', y_pos)
     client[f'stagepiezo.stagepupil_y_pos.target'] = client[f'stagepiezo.stagepupil_y_pos.current'] + y_pos
     time.sleep(delay)
