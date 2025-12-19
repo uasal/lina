@@ -320,12 +320,18 @@ def lstsq(modes, data):
     c, *_ = xp.linalg.lstsq(modes, data, rcond=None)
     return c
 
-def tikhonov_inverse(A, rcond=1e-15, return_np=False):
+def tikhonov_inverse(A, rcond=1e-15, return_all=False, return_np=False):
     U, s, Vt = xp.linalg.svd(A, full_matrices=False)
     s_inv = s/(s**2 + (rcond * s.max())**2)
     P = (Vt.T * s_inv).dot(U.T)
+
     if return_np:
-        return ensure_np_array(P) 
+        P = ensure_np_array(P) 
+        U, s, Vt = ensure_np_array(U), ensure_np_array(s), ensure_np_array(Vt)
+    
+    if return_all:
+        return P, U, s, Vt
+
     return P
 
 def beta_reg(S, beta=-1, return_np=False):
