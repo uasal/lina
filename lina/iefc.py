@@ -13,37 +13,65 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colors import LogNorm, Normalize, CenteredNorm
     
 def measure_probe_response(
-        CAMSCI_STREAM, 
-        NCAMSCI,
-        DM_STREAM, 
-        im_params,
-        ref_psf_params,
+        take_im_fun,
+        take_im_params,
+        set_dm_fun,
+        set_dm_params,
         probe_modes,
-        probe_amplitude,  
-        delay=0.01,
+        probe_amplitude, 
+        base_command=None,
+        normalize_diff_fun=None,
+        normalize_diff_params=None,
         plot=False
     ):
-    
-    Ncamsci = CAMSCI_STREAM.shape[0]
-    Nprobes = probe_modes.shape[0]
+    """
+    This will measure the difference images for a provided set of DM probes. 
 
-    current_command = DM_STREAM.grab_latest() / 1e6
+    Args:
+        take_im_fun (_type_): 
+            Function that returns the image of the coronagraph.  
+        take_im_params (_type_): 
+            Dictionary of additional parameters needed for the take_im_fun method.
+        set_dm_fun (_type_): 
+            Function that applies the DM command to the coronagraph. First argument of 
+            this function must be the DM command that will be applied. 
+        set_dm_params (_type_): 
+            Dictionary of additional parameters needed for the set_dm_fun method.
+        probe_modes (_type_):
+            Cube of the DM probe modes that is of the shape Nprobes X Nact X Nact.
+        probe_amplitude (_type_): 
+            Amplitude to apply to the probes. 
+        base_command (_type_, optional): 
+            Underlying command that the probes will be added to. Defaults to None.
+        normalize_diff_fun (_type_, optional): 
+            Function that normalizes the difference images of the probes. If take_im_fun
+            automatically returns normalized intensity images, this is not needed. Defaults to None.
+        normalize_diff_params (_type_, optional): 
+            Dictionary of additional parameters needed for the normalize_diff_fun method. Defaults to None.
+        plot (bool, optional): 
+            Plot the normalized difference images as they are measured. Defaults to False.
+
+    Returns:
+        xp.ndarray: Data cube of the probed difference images of the shape Nprobes X Ncam X Ncam
+    """
+
+    Nprobes = probe_modes.shape[0]
+    Nact = probe_modes.shape[1]
+    if base_command is None: base_command = xp.zeros((Nact, Nact))
     
     all_ims = []
     probed_responses = []
     for i in range(Nprobes):
-        probe = ensure_np_array(probe_amplitude * probe_modes[i])
+        probe = probe_amplitude * probe_modes[i]
 
-        DM_STREAM.write( (current_command + probe)*1e6)
-        time.sleep(delay)
-        im_pos = np.mean(CAMSCI_STREAM.grab_many(NCAMSCI), axis=0)
+        set_dm_fun(base_command + probe, **set_dm_params)
+        im_pos = take_im_fun(**take_im_params)
 
-        DM_STREAM.write( (current_command - probe)*1e6)
-        time.sleep(delay)
-        im_neg = np.mean(CAMSCI_STREAM.grab_many(NCAMSCI), axis=0)
+        set_dm_fun(base_command - probe, **set_dm_params)
+        im_neg = take_im_fun(**take_im_params)
 
         diff_im = im_pos - im_neg
-        diff_im_ni = coro_utils.normalize_coro_im(diff_im, im_params, ref_psf_params, dark_im=0.0)
+        diff_im_ni = diff_im if normalize_diff_fun is None else normalize_diff_fun(diff_im, **normalize_diff_params)
 
         all_ims.append([im_pos, im_neg])
         probed_responses.append( diff_im_ni / (2 * probe_amplitude) ) 
@@ -55,35 +83,79 @@ def measure_probe_response(
                 cmaps=['viridis', 'magma'], 
             )
 
-    all_ims = np.array(all_ims)
-    probed_responses = np.array(probed_responses)
-    DM_STREAM.write( current_command*1e6 )
+    all_ims = xp.array(all_ims)
+    probed_responses = xp.array(probed_responses)
+    set_dm_fun(base_command, **set_dm_params)
     
     return probed_responses
     
 def calibrate(
-        CAMSCI_STREAM, 
-        NCAMSCI,
-        DM_STREAM, 
-        im_params,
-        ref_psf_params,
-        control_mask, 
-        probe_amplitude, 
+        take_im_fun,
+        take_im_params,
+        set_dm_fun,
+        set_dm_params,
+        wfs_mask, 
         probe_modes, 
-        calibration_amplitude, 
+        probe_amplitude, 
         calibration_modes,
-        delay=0.01,
-        scale_factors=None, 
+        calibration_amplitude,
+        scale_factors=None,  
+        initial_command=None,
+        normalize_diff_fun=None,
+        normalize_diff_params=None,
         plot_responses=False, 
     ):
+    """
+    This function will calibrate the coronagraph for a given set of calibration modes with the 
+    given set of DM probes. 
+
+    Args:
+        take_im_fun (_type_): 
+            Function that returns the image of the coronagraph.  
+        take_im_params (_type_): 
+            Dictionary of additional parameters needed for the take_im_fun method.
+        set_dm_fun (_type_): 
+            Function that applies the DM command to the coronagraph. First argument of 
+            this function must be the DM command that will be applied. 
+        set_dm_params (_type_): 
+            Dictionary of additional parameters needed for the set_dm_fun method.
+        wfs_mask (_type_):
+            Binary mask defining the region in the focal plane to control.
+        probe_modes (_type_):
+            Cube of the DM probe modes that is of the shape Nprobes X Nact X Nact.
+        probe_amplitude (_type_): 
+            Amplitude to apply to the probes. 
+        calibration_modes (_type_): 
+            Cube of the DM calibration modes that is of the shape Nmodes X Nact X Nact.
+        calibration_amplitude (_type_): 
+            Amplitude to apply to the calibration modes. 
+        scale_factors (_type_, optional): 
+            Vector of scale factors that are applied to each respective calibration mode. 
+            Allows for different modes to use different calibration amplitudes to prevent
+            saturation on concentrated modes but good SNR on distributed modes. Defaults to None.
+        initial_command (_type_, optional): 
+            Underlying command that the calibration modes will be added to. Defaults to None.
+        normalize_diff_fun (_type_, optional): 
+            Function that normalizes the difference images of the probes. If take_im_fun
+            automatically returns normalized intensity images, this is not needed. Defaults to None.
+        normalize_diff_params (_type_, optional): 
+            Dictionary of additional parameters needed for the normalize_diff_fun method. Defaults to None.
+        plot_responses (bool, optional): 
+            Plots the response maps in DM space and in WFS space. Defaults to False.
+
+    Returns:
+        tuple: 
+            Returns the response matrix for the region of interest specified by the wfs_mask and
+            the response cube containing the complete response measurements for the entire focal plane. 
+
+    """
     print('Calibrating iEFC...')
 
     Nact = probe_modes.shape[1]
     Nprobes = probe_modes.shape[0]
     Nmodes = calibration_modes.shape[0]
-    Ncamsci = CAMSCI_STREAM.shape[0]
-
-    current_command = DM_STREAM.grab_latest()
+    Ncamsci = wfs_mask.shape[0]
+    if initial_command is None: initial_command = xp.zeros((Nact, Nact))
 
     response_matrix = []
     calib_amps = []
@@ -93,123 +165,176 @@ def calibrate(
     start = time.time()
     for i, calibration_mode in enumerate(calibration_modes):
         response = 0
-        for s in [-1, 1]: # We need a + and - probe to estimate the jacobian
+        for s in [1, -1]: # We need a + and - probe to estimate the jacobian
             dm_mode = calibration_mode.reshape(Nact, Nact)
             amp = calibration_amplitude * scale_factors[i] if scale_factors is not None else calibration_amplitude
-            calib_mode = ensure_np_array(amp * dm_mode)
+            calib_mode = amp * dm_mode
 
-            DM_STREAM.write( (current_command + s * calib_mode*1e6))
-            time.sleep(delay)
+            base_command = initial_command + s*calib_mode
             # Compute reponse with difference images of probes
             probed_diffs = measure_probe_response(
-                CAMSCI_STREAM, 
-                NCAMSCI,
-                DM_STREAM, 
-                im_params,
-                ref_psf_params,
-                # dark_im,
+                take_im_fun,
+                take_im_params,
+                set_dm_fun,
+                set_dm_params,
                 probe_modes,
                 probe_amplitude, 
-                delay=delay,
+                base_command=base_command,
+                normalize_diff_fun=normalize_diff_fun,
+                normalize_diff_params=normalize_diff_params,
             )
             calib_amps.append(amp)
-            response += s * probed_diffs.reshape(Nprobes, Ncamsci**2) / (2 * amp)
+            # response += s * probed_diffs.reshape(Nprobes, Ncamsci**2) / (2 * amp)
+            response += s * probed_diffs / (2 * amp)
+            # print(type(response))
             
-            # DM_STREAM.write( (current_command - s * calib_mode) * 1e6) # Remove the mode from the DMs
-        
         print(f"\tCalibrated mode {i+1:d}/{calibration_modes.shape[0]:d} in {time.time()-start:.3f}s", end='')
         print("\r", end="")
         
-        DM_STREAM.write( current_command )
-        if probe_modes.shape[0]==2:
-            response_matrix.append( np.concatenate([response[0, control_mask.ravel()],
-                                                    response[1, control_mask.ravel()]]) )
-        elif probe_modes.shape[0]==3: # if 3 probes are being used
-            response_matrix.append( np.concatenate([response[0, control_mask.ravel()], 
-                                                    response[1, control_mask.ravel()],
-                                                    response[2, control_mask.ravel()]]) )
-        
+        set_dm_fun(initial_command, **set_dm_params)
+        raveled_response = response[:, wfs_mask].ravel()
+        response_matrix.append(raveled_response)
         response_cube.append(response)
     print('\nCalibration complete.')
 
-    response_matrix = np.array(response_matrix).T # this is the response matrix to be inverted
-    response_cube = np.array(response_cube)
+    response_matrix = xp.array(response_matrix).T # this is the response matrix to be inverted
+    response_cube = xp.array(response_cube)
     
     if plot_responses:
-        dm_response_map = np.sqrt(np.mean(np.square(response_matrix.dot(calibration_modes.reshape(Nmodes, -1))), axis=0))
-        dm_response_map = dm_response_map.reshape(Nact,Nact) / np.max(dm_response_map)
+        dm_response_map = xp.sqrt(xp.mean(xp.square(response_matrix.dot(calibration_modes.reshape(Nmodes, -1))), axis=0))
+        dm_response_map = dm_response_map.reshape(Nact,Nact) / xp.max(dm_response_map)
 
-        fp_response_map = np.sqrt( np.mean( np.abs(response_cube), axis=(0,1))).reshape(Ncamsci, Ncamsci)
-        fp_response_map = fp_response_map / np.max(fp_response_map)
+        fp_response_map = xp.sqrt( xp.mean( xp.abs(response_cube), axis=(0,1))).reshape(Ncamsci, Ncamsci)
+        fp_response_map = fp_response_map / xp.max(fp_response_map)
         utils.imshow(
             [dm_response_map, fp_response_map], 
             titles=['DM Response Map', 'Focal Plane Response Map'],
             norms=[LogNorm(1e-2), None]
         )
-            
+
     return response_matrix, response_cube
     
+def make_response_matrix(
+        response_cube,
+        wfs_mask,
+    ):
+    Nmodes = response_cube.shape[0]
+    response_matrix = response_cube[:, :, wfs_mask.ravel()].reshape(Nmodes, -1).T
+    return response_matrix
+
+
 def run(iefc_data,
-        CAMSCI_STREAM,
-        NCAMSCI,
-        DM_STREAM,
-        im_params,
-        ref_psf_params, 
-        dark_im, 
+        take_im_fun,
+        take_im_params,
+        set_dm_fun,
+        set_dm_params,
         control_matrix,
+        probe_modes,
         probe_amplitude, 
-        probe_modes, 
         calib_modes,
-        control_mask,
-        delay=0.01,
+        wfs_mask,
         num_iterations=3,
-        gain=0.75, 
+        gain=1.0, 
         leakage=0.0,
+        normalize_diff_fun=None,
+        normalize_diff_params=None,
+        normalize_metric_fun=None,
+        normalize_metric_params=None,
         plot_current=True,
         plot_all=False,
         vmin=1e-9,
     ):
+    """_summary_
+
+    Args:
+        iefc_data (_type_): 
+            Dictionary of all the corresponding data for this particular iEFC run. Dictionary contains 
+            history of all previously obtained measurements and DM commands. 
+        take_im_fun (_type_): 
+            Function that returns the image of the coronagraph.  
+        take_im_params (_type_): 
+            Dictionary of additional parameters needed for the take_im_fun method.
+        set_dm_fun (_type_): 
+            Function that applies the DM command to the coronagraph. First argument of 
+            this function must be the DM command that will be applied. 
+        set_dm_params (_type_): 
+            Dictionary of additional parameters needed for the set_dm_fun method.
+        control_matrix (_type_): 
+            Pseudo-inverted response matrix for the region of interest specified 
+            by the wfs_mask. 
+        probe_modes (_type_): 
+            Cube of the DM probe modes used for the provided control matrix. 
+        probe_amplitude (_type_): 
+            Amplitude to apply to the DM probes for each iteration of iEFC. 
+        calibration_modes (_type_): 
+            Cube of the DM calibration modes used for the provided control matrix.
+        wfs_mask (_type_):
+            Binary mask defining the region in the focal plane to control.
+        num_iterations (int, optional): 
+            Number of iterati9ons to perform iEFC with these specific parameters. Defaults to 3.
+        gain (float, optional): 
+            Loop gain applied to each computed DM command. Defaults to 1.0.
+        leakage (float, optional): 
+            Leakage specifiy how much of the previous commands to remove. Defaults to 0.0.
+        normalize_diff_fun (_type_, optional): 
+            Function that normalizes the difference images of the probes. If take_im_fun
+            automatically returns normalized intensity images, this is not needed. Defaults to None.
+        normalize_diff_params (_type_, optional): 
+            Dictionary of additional parameters needed for the normalize_diff_fun method. Defaults to None.
+        normalize_metric_fun (_type_, optional): 
+            Function that normalizes the metric image used to evaluate current contrast. If take_im_fun
+            automatically returns normalized intensity images, this is not needed. Defaults to None.
+        normalize_metric_params (_type_, optional): 
+            Dictionary of additional parameters needed for the normalize_metric_fun method. Defaults to None.
+        plot_current (bool, optional): 
+            Plots the results of the current iteration. Defaults to True.
+        plot_all (bool, optional): 
+            Plots the results of all iterations performed during this round of iEFC. Defaults to False.
+        vmin (_type_, optional): 
+            Minimum contrast value to display on the plots. Defaults to 1e-9.
+
+    Returns:
+        iefc_data (_type_): 
+            Dictionary of iEFC data appended with the results of the new iterations performed. 
+    """
     
     start = time.time()
-    starting_itr = len(iefc_data['images'])
+    starting_itr = len(iefc_data['ni_images'])
 
     Nact = probe_modes.shape[1]
     Nmodes = calib_modes.shape[0]
     modal_matrix = calib_modes.reshape(Nmodes, -1).T
 
-    total_command = copy.copy(iefc_data['commands'][-1]) if len(iefc_data['commands'])>0 else np.zeros((Nact,Nact))
+    total_command = copy.copy(iefc_data['commands'][-1]) if len(iefc_data['commands'])>0 else xp.zeros((Nact,Nact))
 
     for i in range(num_iterations):
         print(f"Running iteration {i+starting_itr} / {num_iterations+starting_itr-1}")
         diff_ims = measure_probe_response(
-            CAMSCI_STREAM, 
-            NCAMSCI,
-            DM_STREAM, 
-            im_params,
-            ref_psf_params,
-            # dark_im,
+            take_im_fun,
+            take_im_params,
+            set_dm_fun,
+            set_dm_params,
             probe_modes,
             probe_amplitude, 
-            delay=delay,
+            base_command=total_command,
+            normalize_diff_fun=normalize_diff_fun,
+            normalize_diff_params=normalize_diff_params,
         )
-        measurement_vector = diff_ims[:, control_mask].ravel()
+        measurement_vector = diff_ims[:, wfs_mask].ravel()
 
         modal_coeff = -control_matrix.dot(measurement_vector)
         del_command = gain * modal_matrix.dot(modal_coeff).reshape(Nact, Nact)
         total_command = (1.0 - leakage) * total_command + del_command
         
-        DM_STREAM.write( total_command * 1e6 )
-        time.sleep(delay)
+        set_dm_fun(total_command, **set_dm_params)
 
         print(f"Measuring dark hole state ...")
-        # coro_im = np.mean(CAMSCI_STREAM.grab_many(NCAMSCI), axis=0)
-        # coro_im_ni = coro_utils.normalize_coro_im(coro_im, im_params, ref_psf_params, dark_im)
-        coro_im_ni, coro_im = coro_utils.snap_ni(CAMSCI_STREAM, NCAMSCI, im_params, ref_psf_params, dark_im)
-        contrast = coro_utils.compute_contrast(coro_im_ni, control_mask)
+        metric_im = take_im_fun(**take_im_params)
+        metric_im_ni = metric_im if normalize_metric_fun is None else normalize_metric_fun(metric_im, **normalize_metric_params)
+        contrast = coro_utils.compute_contrast(metric_im_ni, wfs_mask)
 
-        iefc_data['raw_images'].append(copy.copy(coro_im))
-        iefc_data['dark_images'].append(copy.copy(dark_im))
-        iefc_data['ni_images'].append(copy.copy(coro_im_ni))
+        iefc_data['raw_images'].append(copy.copy(metric_im))
+        iefc_data['ni_images'].append(copy.copy(metric_im_ni))
         iefc_data['contrasts'].append(copy.copy(contrast))
         iefc_data['commands'].append(copy.copy(total_command))
         iefc_data['del_commands'].append(copy.copy(del_command))
@@ -217,7 +342,7 @@ def run(iefc_data,
         if plot_current: 
             if not plot_all: clear_output(wait=True)
             utils.imshow(
-                [del_command, total_command, coro_im_ni], 
+                [del_command, total_command, metric_im_ni], 
                 titles=[f'Iteration {starting_itr + i:d}: $\delta$DM', 
                         'Total DM Command', 
                         f'Normalized Image\nMean Contrast = {contrast:.3e}'],
@@ -274,7 +399,7 @@ def calibrate_bb(
         DM_STREAM, 
         im_params,
         ref_psf_params,
-        control_mask, 
+        wfs_mask, 
         probe_amplitude, 
         probe_modes, 
         calibration_amplitude, 
@@ -290,7 +415,7 @@ def calibrate_bb(
     Nact = probe_modes.shape[1]
     Nprobes = probe_modes.shape[0]
     Nmodes = calibration_modes.shape[0]
-    Nmask = int(control_mask.sum())
+    Nmask = int(wfs_mask.sum())
     Ncamsci = CAMSCI_STREAM.shape[0]
     Nfilters = len(switch_filter_fun_params)
 
@@ -305,7 +430,7 @@ def calibrate_bb(
             DM_STREAM, 
             im_params,
             ref_psf_params,
-            control_mask, 
+            wfs_mask, 
             probe_amplitude, 
             probe_modes, 
             calibration_amplitude, 
@@ -325,17 +450,14 @@ def calibrate_bb(
 
 def run_bb(
         iefc_data,
-        CAMSCI_STREAM,
-        NCAMSCI,
-        DM_STREAM,
-        im_params,
-        ref_psf_params, 
-        dark_im, 
+        take_im_fun,
+        take_im_params,
+        set_dm_fun,
+        set_dm_params,
         control_matrix,
+        probe_modes,
         probe_amplitude, 
-        probe_modes, 
         calib_modes,
-        control_mask,
         waves,
         client,
         dm_delay=0.05,
@@ -356,7 +478,7 @@ def run_bb(
     modal_matrix = calib_modes.reshape(Nmodes, -1).T
 
     Nprobes = probe_modes.shape[0]
-    Nmask = int(np.sum(control_mask))
+    Nmask = int(np.sum(wfs_mask))
     Nwaves = len(waves)
 
     total_command = DM_STREAM.grab_latest() / 1e6
@@ -379,7 +501,7 @@ def run_bb(
                 delay=dm_delay,
             )
 
-            measurement_vector_nb = diff_ims_nb[:, control_mask].ravel()
+            measurement_vector_nb = diff_ims_nb[:, wfs_mask].ravel()
             measurement_vector_bb[j**Nprobes*Nmask:(j+1)*Nprobes*Nmask] = measurement_vector_nb
         
         coro_utils.switch_filter_stage(1, client, filter_delay)
@@ -394,7 +516,7 @@ def run_bb(
         print(f"Measuring dark hole state ...")
         coro_im = np.mean(CAMSCI_STREAM.grab_many(NCAMSCI), axis=0)
         coro_im_ni = coro_utils.normalize_coro_im(coro_im, im_params, ref_psf_params, dark_im)
-        contrast = coro_utils.compute_contrast(coro_im_ni, control_mask)
+        contrast = coro_utils.compute_contrast(coro_im_ni, wfs_mask)
 
         iefc_data['images'].append(copy.copy(coro_im_ni))
         iefc_data['contrasts'].append(copy.copy(contrast))
