@@ -28,25 +28,25 @@ def measure_probe_response(
     This will measure the difference images for a provided set of DM probes. 
 
     Args:
-        take_im_fun (_type_): 
+        take_im_fun (callable): 
             Function that returns the image of the coronagraph.  
-        take_im_params (_type_): 
+        take_im_params (dict): 
             Dictionary of additional parameters needed for the take_im_fun method.
-        set_dm_fun (_type_): 
+        set_dm_fun (callable): 
             Function that applies the DM command to the coronagraph. First argument of 
             this function must be the DM command that will be applied. 
-        set_dm_params (_type_): 
+        set_dm_params (dict): 
             Dictionary of additional parameters needed for the set_dm_fun method.
-        probe_modes (_type_):
+        probe_modes (ndarray):
             Cube of the DM probe modes that is of the shape Nprobes X Nact X Nact.
-        probe_amplitude (_type_): 
-            Amplitude to apply to the probes. 
-        base_command (_type_, optional): 
+        probe_amplitude (float): 
+            Amplitude to apply to the probes in units of meters.
+        base_command (ndarray, optional): 
             Underlying command that the probes will be added to. Defaults to None.
-        normalize_diff_fun (_type_, optional): 
+        normalize_diff_fun (callable, optional): 
             Function that normalizes the difference images of the probes. If take_im_fun
             automatically returns normalized intensity images, this is not needed. Defaults to None.
-        normalize_diff_params (_type_, optional): 
+        normalize_diff_params (dict, optional): 
             Dictionary of additional parameters needed for the normalize_diff_fun method. Defaults to None.
         plot (bool, optional): 
             Plot the normalized difference images as they are measured. Defaults to False.
@@ -110,26 +110,26 @@ def calibrate(
     given set of DM probes. 
 
     Args:
-        take_im_fun (_type_): 
+        take_im_fun (callable): 
             Function that returns the image of the coronagraph.  
-        take_im_params (_type_): 
+        take_im_params (dict): 
             Dictionary of additional parameters needed for the take_im_fun method.
-        set_dm_fun (_type_): 
+        set_dm_fun (callable): 
             Function that applies the DM command to the coronagraph. First argument of 
             this function must be the DM command that will be applied. 
-        set_dm_params (_type_): 
+        set_dm_params (dict): 
             Dictionary of additional parameters needed for the set_dm_fun method.
-        wfs_mask (_type_):
+        wfs_mask (ndarray):
             Binary mask defining the region in the focal plane to control.
-        probe_modes (_type_):
+        probe_modes (ndarray):
             Cube of the DM probe modes that is of the shape Nprobes X Nact X Nact.
-        probe_amplitude (_type_): 
-            Amplitude to apply to the probes. 
-        calibration_modes (_type_): 
+        probe_amplitude (float): 
+            Amplitude to apply to the probes in units of meters.
+        calibration_modes (ndarray): 
             Cube of the DM calibration modes that is of the shape Nmodes X Nact X Nact.
-        calibration_amplitude (_type_): 
-            Amplitude to apply to the calibration modes. 
-        scale_factors (_type_, optional): 
+        calibration_amplitude (float): 
+            Amplitude to apply to the calibration modes in units of meters. 
+        scale_factors (ndarray, optional): 
             Vector of scale factors that are applied to each respective calibration mode. 
             Allows for different modes to use different calibration amplitudes to prevent
             saturation on concentrated modes but good SNR on distributed modes. Defaults to None.
@@ -247,17 +247,17 @@ def run(iefc_data,
     """_summary_
 
     Args:
-        iefc_data (_type_): 
+        iefc_data (dict): 
             Dictionary of all the corresponding data for this particular iEFC run. Dictionary contains 
             history of all previously obtained measurements and DM commands. 
-        take_im_fun (_type_): 
+        take_im_fun (callable): 
             Function that returns the image of the coronagraph.  
-        take_im_params (_type_): 
+        take_im_params (dict): 
             Dictionary of additional parameters needed for the take_im_fun method.
-        set_dm_fun (_type_): 
+        set_dm_fun (callable): 
             Function that applies the DM command to the coronagraph. First argument of 
             this function must be the DM command that will be applied. 
-        set_dm_params (_type_): 
+        set_dm_params (dict): 
             Dictionary of additional parameters needed for the set_dm_fun method.
         control_matrix (_type_): 
             Pseudo-inverted response matrix for the region of interest specified 

@@ -13,95 +13,88 @@ from matplotlib.colors import LogNorm, Normalize
 from matplotlib.gridspec import GridSpec
 
 def run(
-        CAMSCI_STREAM,
-        DM_STREAM, 
-        im_params,
-        ref_psf_params,
-        NFRAMES,
-        control_mask, 
-        dm_mask,
-        probes, 
+        take_im_fun,
+        take_im_params,
+        set_dm_fun,
+        set_dm_params,
+        get_dm_fun,
+        get_dm_params,
+        compute_probe_ef_fun,
+        compute_probe_ef_params,
+        wfs_mask, 
+        # dm_mask,
+        probe_modes, 
         probe_amp, 
-        jacobian=None,
-        model=None,
-        wavelength=None,
-        E_FP_NOM=None,
+        base_command=None,
+        normalize_diff_fun=None,
+        normalize_diff_params=None,
+        # jacobian=None,
+        # model=None,
+        # wavelength=None,
+        # E_FP_NOM=None,
         fp_shift=None,
         reg_cond=1e-3, 
         gain=1,
         plot=False,
         plot_est=False, 
         return_all=False,
-        delay=0.05,
     ):
     
-    Nmask = int(control_mask.sum())
-    Nprobes = probes.shape[0]
+    Nmask = int(wfs_mask.sum())
+    Nprobes = probe_modes.shape[0]
+    Nact = probe_modes.shape[1]
 
-    current_command = DM_STREAM.grab_latest() / 1e6
-    current_acts = current_command[dm_mask]
+    # if base_command is None: base_command = xp.zeros((Nact, Nact))
+    base_command = get_dm_fun(**get_dm_params)
 
     all_ims = []
     diff_ims = []
-    E_probes = []
+    probe_efs = []
     for i in range(Nprobes):
-        dm_probe = probe_amp*probes[i]
+        probe = probe_amp*probe_modes[i]
 
-        DM_STREAM.write( (current_command + dm_probe)*1e6)
-        time.sleep(delay)
-        im_pos = np.mean(CAMSCI_STREAM.grab_many(NFRAMES), axis=0)
+        set_dm_fun(base_command + probe, **set_dm_params)
+        im_pos = take_im_fun(**take_im_params)
 
-        DM_STREAM.write( (current_command - dm_probe)*1e6)
-        time.sleep(delay)
-        im_neg = np.mean(CAMSCI_STREAM.grab_many(NFRAMES), axis=0)
+        set_dm_fun(base_command - probe, **set_dm_params)
+        im_neg = take_im_fun(**take_im_params)
 
         diff_im = im_pos - im_neg
-        diff_im_ni = coro_utils.normalize_coro_im(diff_im, im_params, ref_psf_params, dark_im=0.0)
+        diff_im_ni = diff_im if normalize_diff_fun is None else normalize_diff_fun(diff_im, **normalize_diff_params)
         if fp_shift is not None:
-            scipy.ndimage.shift(diff_im_ni, (fp_shift[1], fp_shift[0]), order=0)
+            xcipy.ndimage.shift(diff_im_ni, (fp_shift[1], fp_shift[0]), order=0)
 
-        probe_acts = probe_amp*probes[i][dm_mask]
-
-        if jacobian is not None:
-            E_probe_vec = xp.array(jacobian.dot(xp.array(probe_acts)))
-            E_probe = xp.zeros(CAMSCI_STREAM.shape, dtype=xp.complex128)
-            E_probe[control_mask] = E_probe_vec[::2] + 1j*E_probe_vec[1::2]
-        elif model is not None:
-            if i==0 and E_FP_NOM is None: 
-                E_FP_NOM = model.forward(current_acts, wavelength, use_vortex=True)
-            E_with_probe = model.forward(current_acts + probe_acts, wavelength, use_vortex=True)
-            E_probe = E_with_probe - E_FP_NOM
-        else:
-            raise ValueError('Must provide either a Jacobian or a forward model to estimate E-field response of probes.')
+        probe_ef = compute_probe_ef_fun(probe, **compute_probe_ef_params)
 
         all_ims.append([im_pos, im_neg])
         diff_ims.append(diff_im_ni)
-        E_probes.append(E_probe)
+        probe_efs.append(probe_ef)
 
         if plot:
             utils.imshow(
-                [dm_probe, im_pos, diff_im, diff_im_ni], 
-                titles=['DM Probe', 'Positive Chop Image', 'Difference Image', 'Normalized Difference Image'],
-                norms=[None, LogNorm(np.max(im_pos)/1e4), None, None],
+                [probe, im_pos, diff_im_ni], 
+                titles=['DM Probe', 'Positive Chop Image', 'Normalized Difference Image'],
+                norms=[None, LogNorm(xp.max(im_pos)/1e4), None, None],
                 cmaps=['viridis', 'magma', 'magma', 'magma'],
-                figsize=(18, 8),
+                # figsize=(18, 8),
                 wspace=0.3,
                 xticks=[[], [], [], []],
                 yticks=[[], [], [], []],
             )
 
-    DM_STREAM.write( current_command*1e6 )
+    set_dm_fun(base_command, **set_dm_params)
+
     all_ims = xp.array(all_ims)
     diff_ims = xp.array(diff_ims)
-    E_probes = xp.array(E_probes)
+    probe_efs = xp.array(probe_efs)
 
     # Use batch process to estimate each pixel individually
     E_est = xp.zeros(Nmask, dtype=xp.complex128)
     for i in range(Nmask):
-        delI = diff_ims[:, control_mask][:, i]
+        delI = diff_ims[:, wfs_mask][:, i]
         H = 4*xp.array(
-            [E_probes[:, control_mask][:, i].real, 
-             E_probes[:, control_mask][:, i].imag]
+            [probe_efs[:, wfs_mask][:, i].real, 
+             probe_efs[:, wfs_mask][:, i].imag]
         ).T # Dimensions are 2 X N_probes
         
         Hinv = xp.linalg.pinv(H.T @ H, reg_cond) @ H.T
@@ -110,8 +103,8 @@ def run(
 
         E_est[i] = est[0] + 1j*est[1]
         
-    E_est_2d = xp.zeros(CAMSCI_STREAM.shape, dtype=xp.complex128)
-    E_est_2d[control_mask] = gain * E_est
+    E_est_2d = xp.zeros(wfs_mask.shape, dtype=xp.complex128)
+    E_est_2d[wfs_mask] = gain * E_est
 
     if plot_est:
         I_est = xp.abs(E_est_2d)**2
@@ -124,7 +117,7 @@ def run(
         )
 
     if return_all:
-        return E_est_2d, E_est, E_probes, diff_ims
+        return E_est_2d, E_est, probe_efs, diff_ims
     else:
-        return E_est_2d, E_est
+        return E_est_2d
 
