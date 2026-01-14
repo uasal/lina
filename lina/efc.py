@@ -42,7 +42,8 @@ def calibrate(
         current_acts (ndarray, optional): . Defaults to None.
 
     Returns:
-        _type_: _description_
+        jac (ndarray):
+            The jacobian (or response matrix) computed by the instrument model.
     """
 
     Nacts = int(dm_mask.sum())
@@ -79,6 +80,17 @@ def calibrate(
 
     return jac
 
+def init_efc_data():
+    efc_data = {
+        'raw_images':[],
+        'ni_images':[],
+        'efields':[],
+        'contrasts':[],
+        'commands':[],
+        'del_commands':[],
+    }
+    return efc_data
+
 def run(efc_data,
         take_im_fun,
         take_im_params,
@@ -95,10 +107,55 @@ def run(efc_data,
         gain=1.0, 
         leakage=0.0,
     ):
+    """
+    Run EFC for a set amount of iterations.
+
+    Args:
+        efc_data (dict): 
+            Dictionary of all the corresponding data for this particular EFC run. Dictionary contains 
+            history of all previously obtained measurements and DM commands. 
+        take_im_fun (callable): 
+            Function that returns the image of the coronagraph.  
+        take_im_params (dict): 
+            Dictionary of additional parameters needed for the take_im_fun method.
+        set_dm_fun (callable): 
+            Function that applies the DM command to the coronagraph. First argument of 
+            this function must be the DM command that will be applied. 
+        set_dm_params (dict): 
+            Dictionary of additional parameters needed for the set_dm_fun method.
+        estimate_ef_fun (callable): 
+            The function used to estimate the electric field on each iteration of EFC. Typically this
+            will be PWP or SCC. 
+        estimate_ef_params (dict): 
+            Dictionary of additional parameters needed for the estimate_ef_fun method. 
+        wfs_mask (ndarray):
+            Binary mask defining the region in the focal plane to control.
+        dm_mask (ndarray): 
+            Binary array definiing the active actuators of the DM. 
+        control_matrix (ndarray): 
+            Pseudo-inverted response matrix for the region of interest specified 
+            by the wfs_mask. 
+        normalize_metric_fun (callable, optional): 
+            Function that normalizes the metric image used to evaluate current contrast. If take_im_fun
+            automatically returns normalized intensity images, this is not needed. Defaults to None.
+        normalize_metric_params (dict, optional): 
+            Dictionary of additional parameters needed for the normalize_metric_fun method. Defaults to None.
+        num_iterations (int, optional): 
+            Number of iterati9ons to perform iEFC with these specific parameters. Defaults to 3.
+        gain (float, optional): 
+            Loop gain applied to each computed DM command. Defaults to 1.0.
+        leakage (float, optional): 
+            Leakage specifiy how much of the previous commands to remove. Defaults to 0.0.
+
+    Returns:
+        efc_data (dict): 
+            Dictionary of EFC data appended with the results of the new iterations performed. 
+    """
     
     Nmask = int(wfs_mask.sum())
+    Nact = dm_mask.shape[0]
 
-    starting_itr = len(efc_data['commands'])
+    starting_itr = len(efc_data['commands']) + 1
     total_command = copy.copy(efc_data['commands'][-1]) if len(efc_data['commands'])>0 else xp.zeros((Nact,Nact))
 
     del_command = xp.zeros(dm_mask.shape) # array to fill with actuator solutions
@@ -123,6 +180,7 @@ def run(efc_data,
         efc_data['raw_images'].append(copy.copy(metric_im))
         efc_data['ni_images'].append(copy.copy(metric_im_ni))
         efc_data['contrasts'].append(copy.copy(contrast))
+        efc_data['efields'].append(copy.copy(E_ab))
         efc_data['commands'].append(copy.copy(total_command))
         efc_data['del_commands'].append(copy.copy(del_command))
 
@@ -135,100 +193,6 @@ def run(efc_data,
 
     return efc_data
 
-def compute_jacobian_bb(
-        models,
-        wfs_mask, 
-        amp=1e-9, 
-        current_acts=None, 
-    ):
 
-    Nwaves = len(models)
-    Nmask = int(wfs_mask.sum())
-    jac = xp.zeros((Nwaves * 2*Nmask, models[0].Nacts))
-    mono_jacs = xp.zeros((Nwaves, 2*Nmask, models[0].Nacts))
-    for i in range(Nwaves):
-        mono_jac = compute_jacobian(
-            models[i],
-            wfs_mask,
-            amp=amp, 
-            current_acts=current_acts,
-        )
-
-        mono_jacs[i] = mono_jac
-        jac[i*2*Nmask:(i+1)*2*Nmask] = mono_jac
-
-    return jac, mono_jacs
-
-
-def run_bb(
-        efc_data,
-        CAMSCI_STREAM,
-        DM_STREAM, 
-        im_params,
-        ref_psf_params,
-        NFRAMES,
-        dark_im,
-        wfs_mask,
-        dm_mask,
-        control_matrix,
-        waves,
-        pwp_params=None,
-        Nitr=3, 
-        gain=1.0, 
-        leakage=0.0,
-        dm_delay=0.05,
-        filter_delay=1.0,
-    ):
-    
-    Nwaves = len(waves)
-    starting_itr = len(efc_data['images'])
-    Nmask = int(wfs_mask.sum())
-
-    del_command = np.zeros(DM_STREAM.shape) # array to fill with actuator solutions
-    E_ab_bb_vec = xp.zeros((Nwaves * 2*Nmask))
-    for i in range(Nitr):
-        print(f'Running iteration {starting_itr+i:d}')
-        current_command = DM_STREAM.grab_latest() / 1e6
-
-        for j in range(Nwaves):
-            # SET FILTER WHEEL TO DESIRED POSITION
-            time.sleep(filter_delay)
-            E_ab_nb_vec = xp.zeros((2*Nmask))
-            E_ab_est, E_ab_est_vec = pwp.run_with_jacobian(
-                CAMSCI_STREAM,
-                DM_STREAM, 
-                im_params,
-                ref_psf_params,
-                **pwp_params,
-            )
-            E_ab_nb_vec[::2] = xp.real(E_ab_est_vec)
-            E_ab_nb_vec[1::2] = xp.imag(E_ab_est_vec)
-
-            E_ab_bb_vec[j*2*Nmask:(j+1)*2*Nmask] = E_ab_nb_vec
-
-        del_acts = - gain * control_matrix.dot(E_ab_bb_vec)
-        del_command[dm_mask] = ensure_np_array(del_acts)
-        total_command = (1 - leakage) * current_command + del_command
-        DM_STREAM.write(total_command*1e6)
-        time.sleep(dm_delay)
-
-        metric_im = np.mean(CAMSCI_STREAM.grab_many(NFRAMES), axis=0)
-        metric_im_ni = coro_utils.normalize_coro_im(metric_im, im_params, ref_psf_params, dark_im=dark_im)
-        mean_ni = coro_utils.compute_contrast(metric_im_ni, wfs_mask)
-
-        efc_data['images'].append(copy.copy(metric_im_ni))
-        efc_data['contrasts'].append(mean_ni)
-        efc_data['efields'].append(copy.copy(E_ab_est))
-        efc_data['commands'].append(copy.copy(total_command))
-        efc_data['del_commands'].append(copy.copy(del_command))
-
-        utils.imshow(
-            [del_command, total_command, metric_im_ni],
-            titles=['New Command', 'Total Command', f'Metric Image\nContrast = {mean_ni:.2e}'],
-            norms=[None, None, LogNorm(1e-10)],
-            cmaps=['viridis', 'viridis', 'magma'],
-        )
-
-    return efc_data
 
 

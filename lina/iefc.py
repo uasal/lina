@@ -222,6 +222,15 @@ def make_response_matrix(
     response_matrix = response_cube[:, :, wfs_mask.ravel()].reshape(Nmodes, -1).T
     return response_matrix
 
+def init_iefc_data():
+    efc_data = {
+        'raw_images':[],
+        'ni_images':[],
+        'contrasts':[],
+        'commands':[],
+        'del_commands':[],
+    }
+    return efc_data
 
 def run(iefc_data,
         take_im_fun,
@@ -259,16 +268,16 @@ def run(iefc_data,
             this function must be the DM command that will be applied. 
         set_dm_params (dict): 
             Dictionary of additional parameters needed for the set_dm_fun method.
-        control_matrix (_type_): 
+        control_matrix (ndarray): 
             Pseudo-inverted response matrix for the region of interest specified 
             by the wfs_mask. 
-        probe_modes (_type_): 
+        probe_modes (ndarray): 
             Cube of the DM probe modes used for the provided control matrix. 
-        probe_amplitude (_type_): 
+        probe_amplitude (float): 
             Amplitude to apply to the DM probes for each iteration of iEFC. 
-        calibration_modes (_type_): 
+        calibration_modes (ndarray): 
             Cube of the DM calibration modes used for the provided control matrix.
-        wfs_mask (_type_):
+        wfs_mask (ndarray):
             Binary mask defining the region in the focal plane to control.
         num_iterations (int, optional): 
             Number of iterati9ons to perform iEFC with these specific parameters. Defaults to 3.
@@ -276,15 +285,15 @@ def run(iefc_data,
             Loop gain applied to each computed DM command. Defaults to 1.0.
         leakage (float, optional): 
             Leakage specifiy how much of the previous commands to remove. Defaults to 0.0.
-        normalize_diff_fun (_type_, optional): 
+        normalize_diff_fun (callable, optional): 
             Function that normalizes the difference images of the probes. If take_im_fun
             automatically returns normalized intensity images, this is not needed. Defaults to None.
-        normalize_diff_params (_type_, optional): 
+        normalize_diff_params (dict, optional): 
             Dictionary of additional parameters needed for the normalize_diff_fun method. Defaults to None.
-        normalize_metric_fun (_type_, optional): 
+        normalize_metric_fun (callable, optional): 
             Function that normalizes the metric image used to evaluate current contrast. If take_im_fun
             automatically returns normalized intensity images, this is not needed. Defaults to None.
-        normalize_metric_params (_type_, optional): 
+        normalize_metric_params (dict, optional): 
             Dictionary of additional parameters needed for the normalize_metric_fun method. Defaults to None.
         plot_current (bool, optional): 
             Plots the results of the current iteration. Defaults to True.
@@ -294,7 +303,7 @@ def run(iefc_data,
             Minimum contrast value to display on the plots. Defaults to 1e-9.
 
     Returns:
-        iefc_data (_type_): 
+        iefc_data (dict): 
             Dictionary of iEFC data appended with the results of the new iterations performed. 
     """
     
