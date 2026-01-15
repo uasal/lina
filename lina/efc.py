@@ -4,11 +4,12 @@ from lina import utils, coro_utils, pwp
 import numpy as np
 import time
 import copy
+from IPython.display import display, clear_output
 
 import matplotlib.pyplot as plt
 plt.rcParams['image.origin']='lower'
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from matplotlib.colors import LogNorm, Normalize
+from matplotlib.colors import LogNorm, Normalize, CenteredNorm
 from matplotlib.gridspec import GridSpec
 
 def calibrate(
@@ -39,7 +40,8 @@ def calibrate(
         amp (float, optional): 
             Amplitude of the actuator pokes used to compute the electric field response 
             in units of meters. Defaults to 1e-9.
-        current_acts (ndarray, optional): . Defaults to None.
+        current_command (ndarray, optional): 
+            Base command the DM pokes are added on top of for calibration. Defaults to None.
 
     Returns:
         jac (ndarray):
@@ -106,6 +108,9 @@ def run(efc_data,
         num_iterations=3, 
         gain=1.0, 
         leakage=0.0,
+        plot_current=True,
+        plot_all=False,
+        vmin=1e-9,
     ):
     """
     Run EFC for a set amount of iterations.
@@ -184,12 +189,17 @@ def run(efc_data,
         efc_data['commands'].append(copy.copy(total_command))
         efc_data['del_commands'].append(copy.copy(del_command))
 
-        utils.imshow(
-            [del_command, total_command, metric_im_ni],
-            titles=[f'Iteration {starting_itr + i:d}: $\delta$DM', 'Total Command', f'Metric Image\nContrast = {contrast:.2e}'],
-            norms=[None, None, LogNorm(1e-10)],
-            cmaps=['viridis', 'viridis', 'magma'],
-        )
+        if plot_current: 
+            if not plot_all: clear_output(wait=True)
+            utils.imshow(
+                [del_command, total_command, metric_im_ni], 
+                titles=[f'Iteration {starting_itr + i:d}: $\delta$DM', 
+                        'Total DM Command', 
+                        f'Normalized Image\nMean Contrast = {contrast:.3e}'],
+                cmaps=['viridis', 'viridis', 'magma'],
+                pxscls=[None, None, None],
+                norms=[CenteredNorm(), None, LogNorm(vmin=vmin)],
+            )
 
     return efc_data
 
