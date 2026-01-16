@@ -222,7 +222,7 @@ def make_response_matrix(
     response_matrix = response_cube[:, :, wfs_mask.ravel()].reshape(Nmodes, -1).T
     return response_matrix
 
-def init_iefc_data():
+def init_data():
     efc_data = {
         'raw_images':[],
         'ni_images':[],
@@ -251,7 +251,8 @@ def run(iefc_data,
         normalize_metric_params=None,
         plot_current=True,
         plot_all=False,
-        vmin=1e-9,
+        vmin=1e-10,
+        vmax=1e-5,
     ):
     """_summary_
 
@@ -308,13 +309,12 @@ def run(iefc_data,
     """
     
     start = time.time()
-    starting_itr = len(iefc_data['ni_images'])
+    starting_itr = len(iefc_data['commands']) + 1
+    total_command = copy.copy(iefc_data['commands'][-1]) if len(iefc_data['commands'])>0 else xp.zeros((Nact,Nact))
 
     Nact = probe_modes.shape[1]
     Nmodes = calib_modes.shape[0]
     modal_matrix = calib_modes.reshape(Nmodes, -1).T
-
-    total_command = copy.copy(iefc_data['commands'][-1]) if len(iefc_data['commands'])>0 else xp.zeros((Nact,Nact))
 
     for i in range(num_iterations):
         print(f"Running iteration {i+starting_itr} / {num_iterations+starting_itr-1}")
@@ -357,7 +357,7 @@ def run(iefc_data,
                         f'Normalized Image\nMean Contrast = {contrast:.3e}'],
                 cmaps=['viridis', 'viridis', 'magma'],
                 pxscls=[None, None, None],
-                norms=[CenteredNorm(), None, LogNorm(vmin=vmin)],
+                norms=[CenteredNorm(), None, LogNorm(vmin, vmax)],
             )
 
     print(f'Completed {num_iterations:d} iterations in {time.time()-start:.3f}s.')

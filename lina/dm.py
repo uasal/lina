@@ -213,43 +213,5 @@ def make_cross_command(xc=[0], yc=[0], Nact=34):
     # cross
     return cross
 
-def val_and_grad(
-        del_acts, 
-        OPD,
-        M, 
-        current_acts=None,
-    ):
-
-    del_acts = xp.array(del_acts)
-    del_command = xp.zeros((M.Nact, M.Nact))
-    del_command[M.dm_mask] = xp.array(del_acts)
-
-    current_acts = xp.array(current_acts) if current_acts is not None else xp.zeros((M.Nact, M.Nact))
-
-    OPD = xp.array(OPD)
-
-    dm_command = current_acts + del_command
-    dm_mft = M.Mx_dm@dm_command@M.My_dm
-    dm_surf_fft = M.inf_fun_fft * dm_mft
-    dm_surf = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(dm_surf_fft,))).real
-    dm_surf = utils.pad_or_crop(dm_surf, OPD.shape[0])
-
-    OPD_MASK = utils.pad_or_crop(M.BAP_MASK, OPD.shape[0])
-    opd_l2norm = OPD[OPD_MASK].dot(OPD[OPD_MASK])
-    total_opd =  OPD + 2*dm_surf
-    J = total_opd[OPD_MASK].dot(total_opd[OPD_MASK]) / opd_l2norm
-    # print(J)
-
-    masked_total = OPD_MASK * total_opd
-    dJ_dOPD = 2 * (masked_total) / opd_l2norm
-
-    dJ_dS_DM = utils.pad_or_crop(dJ_dOPD, M.Nsurf)
-    x2_bar = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM)))
-    x1_bar = x2_bar * M.inf_fun_fft.conj()
-    dJ_dA1 = M.Mx_dm_back@x1_bar@M.My_dm_back / ( M.Nsurf * M.Nact * M.Nact )
-
-    dJ_dA = dJ_dA1[M.dm_mask].real
-
-    return ensure_np_array(J), ensure_np_array(dJ_dA)
 
 

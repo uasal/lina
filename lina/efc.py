@@ -82,7 +82,7 @@ def calibrate(
 
     return jac
 
-def init_efc_data():
+def init_data():
     efc_data = {
         'raw_images':[],
         'ni_images':[],
@@ -110,7 +110,8 @@ def run(efc_data,
         leakage=0.0,
         plot_current=True,
         plot_all=False,
-        vmin=1e-9,
+        vmin=1e-10,
+        vmax=1e-5,
     ):
     """
     Run EFC for a set amount of iterations.
@@ -198,7 +199,7 @@ def run(efc_data,
                         f'Normalized Image\nMean Contrast = {contrast:.3e}'],
                 cmaps=['viridis', 'viridis', 'magma'],
                 pxscls=[None, None, None],
-                norms=[CenteredNorm(), None, LogNorm(vmin=vmin)],
+                norms=[CenteredNorm(), None, LogNorm(vmin, vmax)],
             )
 
     return efc_data

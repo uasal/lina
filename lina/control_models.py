@@ -81,6 +81,7 @@ class MODEL():
         pwf = poppy.FresnelWavefront(beam_radius=self.lyot_pupil_diam/2 * u.m, npix=self.npix, oversample=self.def_oversample)
         self.APERTURE = poppy.CircularAperture(radius=self.lyot_pupil_diam/2 * u.m).get_transmission(pwf)
         self.LYOTSTOP = poppy.CircularAperture(radius=self.lyot_ratio * self.lyot_pupil_diam/2 * u.m).get_transmission(pwf)
+        self.BAP_MASK = self.APERTURE > 0.0
 
         self.PREFPM_AMP = PREFPM_AMP if PREFPM_AMP is not None else xp.ones_like(self.APERTURE)
         self.PREFPM_OPD = PREFPM_OPD if PREFPM_OPD is not None else xp.zeros_like(self.APERTURE)
@@ -156,16 +157,18 @@ class MODEL():
         self.camsci_rotation = 0.0
         self.camsci_shift = np.array([0, 0])
 
-        self.dm_command = xp.zeros((self.Nact, self.Nact))
+        self.dm_commands = xp.zeros((10, self.Nact, self.Nact))
     
     def forward(
             self, 
             actuators, 
-            wavelength=630e-9, 
+            wavelength=None, 
             use_vortex=True, 
             return_ints=False, 
             plot=False,
         ):
+
+        if wavelength is None: wavelength = self.wavelength_c
 
         dm_command = xp.zeros((self.Nact,self.Nact))
         dm_command[self.dm_mask] = xp.array(actuators)
@@ -254,6 +257,14 @@ class MODEL():
             return E_FP, E_EP, DM_PHASOR
         else:
             return E_FP
+        
+    def snap(self):
+        dm_command = xp.sum(self.dm_commands, axis=0)
+        E_FP = self.forward(dm_command[self.dm_mask], self.wavelength, self.use_vortex)
+        im = xp.abs(E_FP)**2
+        return im
+
+
 
 def val_and_grad(
         del_acts, 
@@ -412,5 +423,45 @@ def val_and_grad_bb(
     dJ_dA_bb = np.sum(dJ_dA_monos, axis=0) + ensure_np_array( r_cond * 2*del_acts_waves )
     
     return J_bb, dJ_dA_bb
+
+
+def dm_val_and_grad(
+        del_acts, 
+        OPD,
+        M, 
+        current_acts=None,
+    ):
+
+    del_acts = xp.array(del_acts)
+    del_command = xp.zeros((M.Nact, M.Nact))
+    del_command[M.dm_mask] = xp.array(del_acts)
+
+    current_acts = xp.array(current_acts) if current_acts is not None else xp.zeros((M.Nact, M.Nact))
+
+    OPD = xp.array(OPD)
+
+    dm_command = current_acts + del_command
+    dm_mft = M.Mx_dm@dm_command@M.My_dm
+    dm_surf_fft = M.inf_fun_fft * dm_mft
+    dm_surf = xp.fft.fftshift(xp.fft.ifft2(xp.fft.ifftshift(dm_surf_fft,))).real
+    dm_surf = utils.pad_or_crop(dm_surf, OPD.shape[0])
+
+    OPD_MASK = utils.pad_or_crop(M.BAP_MASK, OPD.shape[0])
+    opd_l2norm = OPD[OPD_MASK].dot(OPD[OPD_MASK])
+    total_opd =  OPD + 2*dm_surf
+    J = total_opd[OPD_MASK].dot(total_opd[OPD_MASK]) / opd_l2norm
+    # print(J)
+
+    masked_total = OPD_MASK * total_opd
+    dJ_dOPD = 2 * (masked_total) / opd_l2norm
+
+    dJ_dS_DM = utils.pad_or_crop(dJ_dOPD, M.Nsurf)
+    x2_bar = xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(dJ_dS_DM)))
+    x1_bar = x2_bar * M.inf_fun_fft.conj()
+    dJ_dA1 = M.Mx_dm_back@x1_bar@M.My_dm_back / ( M.Nsurf * M.Nact * M.Nact )
+
+    dJ_dA = dJ_dA1[M.dm_mask].real
+
+    return ensure_np_array(J), ensure_np_array(dJ_dA)
 
 
