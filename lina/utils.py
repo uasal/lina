@@ -1,6 +1,4 @@
-from .math_module import xp, _scipy, ensure_np_array
-from lina.imshows import imshow1, imshow2, imshow3
-import threading as th
+from .math_module import xp, xcipy, ensure_np_array
 
 import numpy as np
 import scipy
@@ -8,21 +6,31 @@ import astropy.units as u
 from astropy.io import fits
 import poppy
 import pickle
+import os
+import shutil
+import glob
 
 import matplotlib.pyplot as plt
 plt.rcParams['image.origin'] = 'lower'
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.patches import Circle, Rectangle
+from matplotlib.colors import LogNorm, Normalize, CenteredNorm
 from IPython.display import display, clear_output
 
-class Process(th.Timer):  
-    def run(self):  
-        while not self.finished.wait(self.interval):  
-            self.function(*self.args, **self.kwargs)
-# process = Repeat(0.1, print, ['Repeating']) 
-# process.start()
-# time.sleep(5)
-# process.cancel()
+def mean(array, mask=None):
+    MEAN = xp.mean(array) if mask is None else xp.mean(array[mask])
+    return MEAN
+
+def rms(array, mask=None):
+    RMS = xp.sqrt( xp.mean( xp.square(array))) if mask is None else xp.sqrt( xp.mean( xp.square(array[mask])))
+    return RMS
+
+def make_grid(npix, pixelscale=1, half_shift=False):
+    if half_shift:
+        y,x = (xp.indices((npix, npix)) - npix//2 + 1/2)*pixelscale
+    else:
+        y,x = (xp.indices((npix, npix)) - npix//2)*pixelscale
+    return x,y
 
 def pad_or_crop( arr_in, npix ):
     n_arr_in = arr_in.shape[0]
@@ -38,6 +46,135 @@ def pad_or_crop( arr_in, npix ):
         x2 = x1 + n_arr_in
         arr_out[x1:x2,x1:x2] = arr_in
     return arr_out
+
+def imshow(
+        arrs,
+        titles=[], 
+        xlabels=[],
+        ylabels=[],
+        title_fzs=[],
+        label_fzs=[],
+        pxscls=[],
+        xlabel_pads=[],
+        ylabel_pads=[],
+        npix=[],
+        cmaps=[],
+        norms=[],
+        show_cbars=[],
+        cbar_labels=[],
+        cbar_label_rots=[],
+        cbar_label_pads=[],
+        grids=[],
+        xticks=[],
+        yticks=[], 
+        all_patches=[],
+        figsize=None,
+        dpi=125,
+        Nrows=1,
+        Ncols=None, 
+        wspace=None, 
+        hspace=None, 
+        return_fig=False,
+    ):
+
+    Nax = len(arrs)
+    titles.extend([None] * (Nax - len(titles)))
+    xlabels.extend([None] * (Nax - len(xlabels)))
+    ylabels.extend([None] * (Nax - len(ylabels)))
+    title_fzs.extend([None] * (Nax - len(title_fzs)))
+    label_fzs.extend([None] * (Nax - len(label_fzs)))
+    xlabel_pads.extend([None] * (Nax - len(xlabel_pads)))
+    ylabel_pads.extend([None] * (Nax - len(ylabel_pads)))
+    cmaps.extend(['magma'] * (Nax - len(cmaps)))
+    norms.extend([None] * (Nax - len(norms)))
+    show_cbars.extend([True] * (Nax - len(show_cbars)))
+    cbar_labels.extend([None] * (Nax - len(cbar_labels)))
+    cbar_label_rots.extend([0] * (Nax - len(cbar_label_rots)))
+    cbar_label_pads.extend([7] * (Nax - len(cbar_label_pads)))
+    grids.extend([None] * (Nax - len(grids)))
+    xticks.extend([None] * (Nax - len(xticks)))
+    yticks.extend([None] * (Nax - len(yticks)))
+    pxscls.extend([None] * (Nax - len(pxscls)))
+    npix.extend([None] * (Nax - len(npix)))
+    all_patches.extend([None] * (Nax - len(all_patches)))
+
+    if figsize is None:
+        if Nax==1:
+            figsize = (4,4)
+        elif Nax==2:
+            figsize = (10,4)
+        elif Nax==3:
+            figsize = (16,4)
+        else:
+            figsize = (10,10)
+    
+    if Nrows==1 and Ncols is None:
+        Ncols = Nax
+    fig, axs = plt.subplots(nrows=Nrows, ncols=Ncols, figsize=figsize, dpi=dpi)
+
+    row_ind = 0
+    col_ind = 0
+    for i in range(Nax):
+        arr = arrs[i]
+        title = titles[i]
+        xlabel = xlabels[i]
+        ylabel = ylabels[i]
+        xlabel_pad = xlabel_pads[i]
+        ylabel_pad = ylabel_pads[i]
+        title_fz = title_fzs[i]
+        label_fz = label_fzs[i]
+        cmap = cmaps[i]
+        norm = norms[i]
+        show_cbar = show_cbars[i]
+        cbar_label = cbar_labels[i]
+        cbar_label_rot = cbar_label_rots[i]
+        cbar_label_pad = cbar_label_pads[i]
+        xtick = xticks[i]
+        ytick = yticks[i]
+        pxscl = pxscls[i]
+        grid = grids[i]
+        patches = all_patches[i]
+        narr = npix[i]
+
+        if narr is not None: 
+            arr = pad_or_crop(arr, narr)
+
+        Nwidth = arr.shape[1]
+        Nheight = arr.shape[0]
+        extent = None if pxscl is None else [-Nwidth/2*pxscl, Nwidth/2*pxscl, -Nheight/2*pxscl, Nheight/2*pxscl]
+
+        if np.ndim(axs)==0:
+            ax = axs
+        elif np.ndim(axs)==1:
+            ax = axs[i]
+        elif np.ndim(axs)==2:
+            row_ind = i//Ncols
+            col_ind = i%Ncols
+            ax = axs[row_ind, col_ind]
+
+        im = ax.imshow(ensure_np_array(arr), cmap=cmap, norm=norm, extent=extent)
+        ax.set_title(title, fontsize=title_fz)
+        ax.set_xlabel(xlabel, fontsize=label_fz, labelpad=xlabel_pad)
+        ax.set_ylabel(ylabel, fontsize=label_fz, labelpad=ylabel_pad)
+        if xtick is not None: ax.set_xticks(xtick)
+        if ytick is not None: ax.set_yticks(ytick)
+        if grid is not None: ax.grid()
+        if patches is not None: 
+            for patch in patches:
+                ax.add_patch(patch)
+        if show_cbar:
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="4%", pad=0.075)
+            cbar = fig.colorbar(im, cax=cax)
+            cbar.ax.set_ylabel(cbar_label, rotation=cbar_label_rot, labelpad=cbar_label_pad)
+    
+    plt.subplots_adjust(wspace=wspace, hspace=hspace)
+    plt.close()
+    
+    if return_fig:
+        return fig, axs
+    else:
+        display(fig)
 
 def save_fits(fpath, data, header=None, ow=True, quiet=False):
     data = ensure_np_array(data)
@@ -60,7 +197,6 @@ def load_fits(fpath, header=False):
     else:
         return data
 
-# functions for saving python objects
 def save_pickle(fpath, data, quiet=False):
     out = open(str(fpath), 'wb')
     pickle.dump(data, out)
@@ -73,33 +209,58 @@ def load_pickle(fpath):
     infile.close()
     return pkl_data  
 
-def rms(data, mask=None):
-    if mask is None:
-        return xp.sqrt(xp.mean(xp.square(data)))
-    else:
-        return xp.sqrt(xp.mean(xp.square(data[mask])))
+def get_fnames(data_path):
+    return sorted(glob.glob(str(data_path)))
 
-def rotate_arr(arr, rotation, reshape=False, order=1):
+def make_dir(dir_path):
+    # Create the directory
+    try:
+        os.mkdir(str(dir_path))
+        print(f"Directory '{str(dir_path)}' created successfully.")
+    except FileExistsError:
+        print(f"Directory '{str(dir_path)}' already exists.")
+    except PermissionError:
+        print(f"Permission denied: Unable to create '{str(dir_path)}'.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+def move_files(source_path, target_path):
+    file_names = os.listdir(str(source_path))
+    for fname in file_names:
+        shutil.move(str(source_path/fname), str(target_path/fname))
+    print(f'Moved files from {str(source_path)} to {str(target_path)}')
+
+def delete_files(dir_path):
+    fnames = sorted(glob.glob(str(dir_path)))
+    for fname in fnames:
+        try:
+            if os.path.isfile(fname) or os.path.islink(fname):
+                os.unlink(fname)
+            elif os.path.isdir(fname):
+                shutil.rmtree(fname)
+        except Exception as e:
+            print('Failed to delete %s. Reason: %s' % (fname, e))
+
+def rotate_arr(arr, rotation, reshape=False, order=3):
     if arr.dtype == complex:
-        arr_r = _scipy.ndimage.rotate(xp.real(arr), angle=rotation, reshape=reshape, order=order)
-        arr_i = _scipy.ndimage.rotate(xp.imag(arr), angle=rotation, reshape=reshape, order=order)
+        arr_r = xcipy.ndimage.rotate(xp.real(arr), angle=rotation, reshape=reshape, order=order)
+        arr_i = xcipy.ndimage.rotate(xp.imag(arr), angle=rotation, reshape=reshape, order=order)
         rotated_arr = arr_r + 1j*arr_i
     else:
-        rotated_arr = _scipy.ndimage.rotate(arr, angle=rotation, reshape=reshape, order=order)
+        rotated_arr = xcipy.ndimage.rotate(arr, angle=rotation, reshape=reshape, order=order)
     return rotated_arr
 
 def interp_arr(arr, pixelscale, new_pixelscale, order=1):
     Nold = arr.shape[0]
-    old_xmax = pixelscale * Nold/2
+    old_xmax = pixelscale * (Nold/2)
+    Nnew = 2*int(np.round(old_xmax/new_pixelscale))
+    new_xmax = new_pixelscale * (Nnew/2)
 
     x,y = xp.ogrid[-old_xmax:old_xmax - pixelscale:Nold*1j,
                    -old_xmax:old_xmax - pixelscale:Nold*1j]
 
-    Nnew = int(np.ceil(2*old_xmax/new_pixelscale)) - 1
-    new_xmax = new_pixelscale * Nnew/2
-
     newx,newy = xp.mgrid[-new_xmax:new_xmax-new_pixelscale:Nnew*1j,
-                            -new_xmax:new_xmax-new_pixelscale:Nnew*1j]
+                         -new_xmax:new_xmax-new_pixelscale:Nnew*1j]
     
     x0 = x[0,0]
     y0 = y[0,0]
@@ -111,46 +272,28 @@ def interp_arr(arr, pixelscale, new_pixelscale, order=1):
 
     coords = xp.array([ivals, jvals])
 
-    interped_arr = _scipy.ndimage.map_coordinates(arr, coords, order=order)
+    interped_arr = xcipy.ndimage.map_coordinates(arr, coords, order=order)
     return interped_arr
 
-def generate_wfe(diam, 
-                 npix=256, oversample=1, 
-                 wavelength=500*u.nm,
-                 opd_index=2.5, amp_index=2, 
-                 opd_seed=1234, amp_seed=12345,
-                 opd_rms=10*u.nm, amp_rms=0.05,
-                 remove_modes=3, # defaults to removing piston, tip, and tilt
-                 ):
-    wf = poppy.FresnelWavefront(beam_radius=diam/2, npix=npix, oversample=oversample, wavelength=wavelength)
-    wfe_opd = poppy.StatisticalPSDWFE(index=opd_index, wfe=opd_rms, radius=diam/2, seed=opd_seed).get_opd(wf)
-    wfe_amp = poppy.StatisticalPSDWFE(index=amp_index, wfe=amp_rms*u.nm, radius=diam/2, seed=amp_seed).get_opd(wf)
+def tt_rms_to_as(vals_rms, beam_diam):
+    vals_pv = vals_rms * 4 # tt_rms values to tt_pv values, the conversion factor is 4
+    vals_as = np.arctan(vals_pv / beam_diam) * 206264.806 # radians * arcsec/radian
+    return vals_as
+
+def tt_as_to_rms(vals_as, beam_diam):
+    vals_pv = np.tan(vals_as / 206264.806) * beam_diam # convert as to radians, take tangent to get ratio, multiply by beam diameter
+    vals_rms = vals_pv / 4  # tt_pv values to tt_rms values, the conversion factor is 1/4
+    return vals_rms
+
+def create_zernike_modes(pupil_mask, nmodes=15, remove_modes=0, return_np=False):
+    if remove_modes>0:
+        nmodes += remove_modes
+
+    zernikes = poppy.zernike.arbitrary_basis(xp.array(pupil_mask), nterms=nmodes, outside=0)[remove_modes:]
+    if return_np:
+        return ensure_np_array(zernikes)
     
-    wfe_amp = xp.asarray(wfe_amp)
-    wfe_opd = xp.asarray(wfe_opd)
-
-    mask = poppy.CircularAperture(radius=diam/2).get_transmission(wf)>0
-    Zs = poppy.zernike.arbitrary_basis(mask, nterms=remove_modes, outside=0)
-    
-    Zc_amp = lstsq(Zs, wfe_amp)
-    Zc_opd = lstsq(Zs, wfe_opd)
-    for i in range(3):
-        wfe_amp -= Zc_amp[i] * Zs[i]
-        wfe_opd -= Zc_opd[i] * Zs[i]
-
-    mask = poppy.CircularAperture(radius=diam/2).get_transmission(wf)>0
-    wfe_rms = xp.sqrt(xp.mean(xp.square(wfe_opd[mask])))
-    wfe_opd *= opd_rms.to_value(u.m)/wfe_rms
-
-    wfe_amp = wfe_amp*1e9 + 1
-
-    wfe_amp_rms = xp.sqrt(xp.mean(xp.square(wfe_amp[mask]-1)))
-    wfe_amp *= amp_rms/wfe_amp_rms
-
-    wfe = wfe_amp * xp.exp(1j*2*np.pi/wavelength.to_value(u.m) * wfe_opd)
-    wfe *= poppy.CircularAperture(radius=diam/2).get_transmission(wf)
-
-    return wfe, mask
+    return zernikes
 
 def lstsq(modes, data):
     """Least-Squares fit of modes to data.
@@ -177,42 +320,30 @@ def lstsq(modes, data):
     c, *_ = xp.linalg.lstsq(modes, data, rcond=None)
     return c
 
-def create_zernike_modes(pupil_mask, nmodes=15, remove_modes=0):
-    if remove_modes>0:
-        nmodes += remove_modes
-    zernikes = poppy.zernike.arbitrary_basis(pupil_mask, nterms=nmodes, outside=0)[remove_modes:]
-
-    return zernikes
-
-def map_acts_to_dm(actuators, dm_mask):
-    Nact = dm_mask.shape[0]
-    command = xp.zeros((Nact, Nact))
-    command.ravel()[dm_mask.ravel()] = actuators
-    return command
-
-# Create control matrix
-def WeightedLeastSquares(A, weight_map, nprobes=2, rcond=1e-1):
-    control_mask = weight_map > 0
-    w = weight_map[control_mask]
-    for i in range(nprobes-1):
-        w = xp.concatenate((w, weight_map[control_mask]))
-    W = xp.diag(w)
-    print(W.shape, A.shape)
-    cov = A.T.dot(W.dot(A))
-    return xp.linalg.inv(cov + rcond * xp.diag(cov).max() * xp.eye(A.shape[1])).dot( A.T.dot(W) )
-
-def TikhonovInverse(A, rcond=1e-15):
+def tikhonov_inverse(A, rcond=1e-15, return_all=False, return_np=False):
     U, s, Vt = xp.linalg.svd(A, full_matrices=False)
     s_inv = s/(s**2 + (rcond * s.max())**2)
-    return (Vt.T * s_inv).dot(U.T)
+    P = (Vt.T * s_inv).dot(U.T)
 
-def beta_reg(S, beta=-1):
+    if return_np:
+        P = ensure_np_array(P) 
+        U, s, Vt = ensure_np_array(U), ensure_np_array(s), ensure_np_array(Vt)
+    
+    if return_all:
+        return P, U, s, Vt
+
+    return P
+
+def beta_reg(S, beta=-1, return_np=False):
     # S is the sensitivity matrix also known as the Jacobian
+    if return_np: S = xp.array(S)
     sts = xp.matmul(S.T, S)
     rho = xp.diag(sts)
     alpha2 = rho.max()
 
-    control_matrix = xp.matmul( xp.linalg.inv( sts + alpha2*10.0**(beta)*xp.eye(sts.shape[0]) ), S.T)
+    control_matrix = xp.matmul( xp.linalg.inv( sts + alpha2*10.0**(beta) * xp.eye(sts.shape[0]) ), S.T)
+    if return_np:
+        control_matrix = ensure_np_array(control_matrix)
     return control_matrix
 
 def create_circ_mask(h, w, center=None, radius=None):
@@ -229,235 +360,56 @@ def create_circ_mask(h, w, center=None, radius=None):
     return mask
 
 # Creating focal plane masks
-def create_annular_focal_plane_mask(npsf, psf_pixelscale, 
-                                    inner_radius, outer_radius, 
-                                    edge=None,
-                                    shift=(0,0), 
-                                    rotation=0,
-                                    plot=False):
-    x = (xp.linspace(-npsf/2, npsf/2-1, npsf) + 1/2)*psf_pixelscale
+def create_annular_focal_plane_mask(
+        npsf, 
+        psf_pixelscale, 
+        irad, 
+        orad,  
+        edge=None,
+        centering='odd', # odd or even
+        rotation=0,
+        x_shift=0,
+        y_shift=0,
+        return_np=False,
+    ):
+    if centering=='even':
+        x = (xp.linspace(-npsf/2, npsf/2-1, npsf) + 1/2) * psf_pixelscale
+    elif centering=='odd':
+        x = xp.linspace(-npsf/2, npsf/2-1, npsf) * psf_pixelscale
     x,y = xp.meshgrid(x,x)
     r = xp.hypot(x, y)
-    mask = (r < outer_radius) * (r > inner_radius)
+    mask = (r > irad) * (r < orad)
     if edge is not None: mask *= (x > edge)
     
-    mask = _scipy.ndimage.rotate(mask, rotation, reshape=False, order=0)
-    mask = _scipy.ndimage.shift(mask, (shift[1], shift[0]), order=0)
-    
-    if plot:
-        imshow1(mask)
-        
+    mask = xcipy.ndimage.rotate(mask, rotation, reshape=False, order=0)
+    mask = xcipy.ndimage.shift(mask, (y_shift, x_shift), order=0)
+    if return_np:
+        return ensure_np_array(mask)
     return mask
 
-def create_box_focal_plane_mask(npsf, psf_pixelscale_lamD, width, height, x0=0, y0=0,):
-    x = (xp.linspace(-npsf/2, npsf/2-1, npsf) + 1/2)*psf_pixelscale_lamD
+def create_annular_mask(
+        N, 
+        pixelscale, 
+        irad, 
+        orad,  
+        edge=None,
+        x_shift=0,
+        y_shift=0,
+        rotation=0,
+        return_np=False,
+    ):
+    x = (xp.linspace(-N/2, N/2-1, N) + 1/2) * pixelscale
     x,y = xp.meshgrid(x,x)
-    mask = ( abs(x - x0) < width/2 ) * ( abs(y - y0) < height/2 )
-    return mask > 0
-
-def masked_rms(image,mask=None):
-    return np.sqrt(np.mean(image[mask]**2))
-
-def create_random_probes(rms, alpha, dm_mask, fmin=1, fmax=17, nprobes=3, 
-                         plot=False,
-                         calc_responses=False):
-    # randomized probes generated by PSD
-    shape = dm_mask.shape
-    ndm = shape[0]
-
-    probes = []
-    for n in range(nprobes):
-        fx = np.fft.rfftfreq(ndm, d=1.0/ndm)
-        fy = np.fft.fftfreq(ndm, d=1.0/ndm)
-        fxx, fyy = np.meshgrid(fx, fy)
-        fr = np.sqrt(fxx**2 + fyy**2)
-        spectrum = ( fr**(alpha/2.0) ).astype(complex)
-        spectrum[fr <= fmin] = 0
-        spectrum[fr >= fmax] = 0
-        cvals = np.random.standard_normal(spectrum.shape) + 1j * np.random.standard_normal(spectrum.shape)
-        spectrum *= cvals
-        probe = np.fft.irfft2(spectrum)
-        probe *= dm_mask * rms / masked_rms(probe, dm_mask)
-        probes.append(probe.real)
-        
-    probes = xp.asarray(probes)/rms
+    r = xp.hypot(x, y)
+    mask = (r > irad) * (r < orad)
+    if edge is not None: mask *= (x > edge)
     
-    if plot:
-        for i in range(nprobes):
-            response = xp.abs(xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift( pad_or_crop(probes[i], 4*ndm) ))))
-            imshow2(probes[i], response, pxscl2=1/4)
-                
-    return probes
+    mask = xcipy.ndimage.rotate(mask, rotation, reshape=False, order=0)
+    mask = xcipy.ndimage.shift(mask, (y_shift, x_shift), order=0)
+    if return_np:
+        return ensure_np_array(mask)
+    return mask
 
-def create_hadamard_modes(dm_mask): 
-    Nacts = dm_mask.sum().astype(int)
-    Nact = dm_mask.shape[0]
-    np2 = 2**int(xp.ceil(xp.log2(Nacts)))
-    hmodes = xp.array(scipy.linalg.hadamard(np2))
-    
-    had_modes = []
-
-    inds = xp.where(dm_mask.flatten().astype(int))
-    for hmode in hmodes:
-        hmode = hmode[:Nacts]
-        mode = xp.zeros((dm_mask.shape[0]**2))
-        mode[inds] = hmode
-        had_modes.append(mode)
-    had_modes = xp.array(had_modes).reshape(np2, Nact, Nact)
-    
-    return had_modes
-    
-def create_fourier_modes(dm_mask, npsf, psf_pixelscale_lamD, iwa, owa, 
-                         rotation=0, 
-                         fourier_sampling=0.75,
-                         which='both', 
-                         return_fs=False,
-                         plot=False,
-                         ):
-    Nact = dm_mask.shape[0]
-    nfg = int(xp.round(npsf * psf_pixelscale_lamD/fourier_sampling))
-    if nfg%2==1: nfg += 1
-    yf, xf = (xp.indices((nfg, nfg)) - nfg//2 + 1/2) * fourier_sampling
-    fourier_cm = create_annular_focal_plane_mask(nfg, fourier_sampling, iwa-fourier_sampling, owa+fourier_sampling, edge=iwa-fourier_sampling, rotation=rotation)
-    ypp, xpp = (xp.indices((Nact, Nact)) - Nact//2 + 1/2)
-
-    sampled_fs = xp.array([xf[fourier_cm], yf[fourier_cm]]).T
-    if plot: imshow1(fourier_cm, pxscl=fourier_sampling, grid=True)
-    
-    fourier_modes = []
-    for i in range(len(sampled_fs)):
-        fx = sampled_fs[i,0]
-        fy = sampled_fs[i,1]
-        if which=='both' or which=='cos':
-            fourier_modes.append( dm_mask * xp.cos(2 * np.pi * (fx*xpp + fy*ypp)/Nact) )
-        if which=='both' or which=='sin':
-            fourier_modes.append( dm_mask * xp.sin(2 * np.pi * (fx*xpp + fy*ypp)/Nact) )
-    
-    if return_fs:
-        return xp.array(fourier_modes), sampled_fs
-    else:
-        return xp.array(fourier_modes)
-
-def create_fourier_probes(dm_mask, npsf, psf_pixelscale_lamD, iwa, owa, 
-                          rotation=0, 
-                          fourier_sampling=0.75, 
-                          shifts=None, nprobes=2,
-                          use_weighting=False, 
-                          plot=False,
-                          ): 
-    Nact = dm_mask.shape[0]
-    cos_modes, fs = create_fourier_modes(dm_mask, npsf, psf_pixelscale_lamD, iwa, owa, rotation,
-                                        fourier_sampling=fourier_sampling, 
-                                        return_fs=True,
-                                        which='cos',
-                                        )
-    sin_modes = create_fourier_modes(dm_mask, npsf, psf_pixelscale_lamD, iwa, owa, rotation,
-                                    fourier_sampling=fourier_sampling, 
-                                    which='sin',
-                                    )
-    nfs = fs.shape[0]
-
-    probes = xp.zeros((nprobes, Nact, Nact))
-    if use_weighting:
-        fmax = xp.max(np.sqrt(fs[:,0]**2 + fs[:,1]**2))
-        sum_cos = 0
-        sum_sin = 0
-        for i in range(nfs):
-            f = np.sqrt(fs[i][0]**2 + fs[i][1]**2)
-            weight = f/fmax
-            sum_cos += weight*cos_modes[i]
-            sum_sin += weight*sin_modes[i]
-        sum_cos = sum_cos
-        sum_sin = sum_sin
-    else:
-        sum_cos = cos_modes.sum(axis=0)
-        sum_sin = sin_modes.sum(axis=0)
-    
-    # nprobes=2 will give one probe that is purely the sum of cos and another that is the sum of sin
-    cos_weights = np.linspace(1,0,nprobes)
-    sin_weights = np.linspace(0,1,nprobes)
-    
-    shifts = [(0,0)]*nprobes if shifts is None else shifts
-
-    for i in range(nprobes):
-        probe = cos_weights[i]*sum_cos + sin_weights[i]*sum_sin
-        probe = _scipy.ndimage.shift(probe, (shifts[i][1], shifts[i][0]))
-        probes[i] = probe/xp.max(probe)
-
-        if plot: 
-            probe_response = xp.abs(xp.fft.fftshift(xp.fft.fft2(xp.fft.ifftshift(pad_or_crop(probes[i], 4*Nact)))))
-            imshow2(probes[i], probe_response, cmap1='viridis', pxscl2=1/4)
-
-    return probes
-
-def create_poke_probes(Nact, poke_indices, plot=False):
-    Nprobes = len(poke_indices)
-    probe_modes = np.zeros((Nprobes, Nact, Nact))
-    for i in range(Nprobes):
-        probe_modes[i, poke_indices[i][1], poke_indices[i][0]] = 1
-    if plot:
-        fig,ax = plt.subplots(nrows=1, ncols=1, dpi=125, figsize=(5,5))
-        ax.scatter(poke_indices[0], poke_indices[1])
-        ax.grid()
-        plt.close()
-        display(fig)
-        
-    return probe_modes
-
-def create_all_poke_modes(dm_mask):
-    Nact = dm_mask.shape[0]
-    Nacts = int(np.sum(dm_mask))
-    poke_modes = xp.zeros((Nacts, Nact, Nact))
-    count=0
-    for i in range(Nact):
-        for j in range(Nact):
-            if dm_mask[i,j]:
-                poke_modes[count, i,j] = 1
-                count+=1
-    return poke_modes
-
-def create_sinc_probe(Nacts, amp, probe_radius, probe_phase=0, offset=(0,0), bad_axis='x'):
-    print('Generating probe with amplitude={:.3e}, radius={:.1f}, phase={:.3f}, offset=({:.1f},{:.1f}), with discontinuity along '.format(amp, probe_radius, probe_phase, offset[0], offset[1]) + bad_axis + ' axis.')
-    
-    xacts = np.arange( -(Nacts-1)/2, (Nacts+1)/2 )/Nacts - np.round(offset[0])/Nacts
-    yacts = np.arange( -(Nacts-1)/2, (Nacts+1)/2 )/Nacts - np.round(offset[1])/Nacts
-    Xacts,Yacts = np.meshgrid(xacts,yacts)
-    if bad_axis=='x': 
-        fX = 2*probe_radius
-        fY = probe_radius
-        omegaY = probe_radius/2
-        probe_commands = amp * np.sinc(fX*Xacts)*np.sinc(fY*Yacts) * np.cos(2*np.pi*omegaY*Yacts + probe_phase)
-    elif bad_axis=='y': 
-        fX = probe_radius
-        fY = 2*probe_radius
-        omegaX = probe_radius/2
-        probe_commands = amp * np.sinc(fX*Xacts)*np.sinc(fY*Yacts) * np.cos(2*np.pi*omegaX*Xacts + probe_phase) 
-    if probe_phase == 0:
-        f = 2*probe_radius
-        probe_commands = amp * np.sinc(f*Xacts)*np.sinc(f*Yacts)
-    return probe_commands
-
-def create_sinc_probes(Npairs, Nact, dm_mask, probe_amplitude, probe_radius=10, probe_offset=(0,0), plot=False):
-    probe_phases = np.linspace(0, np.pi*(Npairs-1)/Npairs, Npairs)
-    
-    probes = []
-    for i in range(Npairs):
-        if i%2==0:
-            axis = 'x'
-        else:
-            axis = 'y'
-            
-        probe = create_sinc_probe(Nact, probe_amplitude, probe_radius, probe_phases[i], offset=probe_offset, bad_axis=axis)
-            
-        probes.append(probe*dm_mask)
-    probes = np.array(probes)
-    if plot:
-        for i,probe in enumerate(probes):
-            probe_response = np.abs(np.fft.fftshift(np.fft.fft2(np.fft.ifftshift( pad_or_crop(probe, int(4*Nact))  ))))
-            imshow2(probe, probe_response, pxscl2=1/4)
-    
-    return probes
-    
 def get_radial_dist(shape, scaleyx=(1.0, 1.0), cenyx=None):
     '''
     Compute the radial separation of each pixel
@@ -493,4 +445,7 @@ def plot_radial_contrast(im, mask, pixelscale, nbins=30, cenyx=None, xlims=None,
     plt.close()
     display(fig)
     
+
+
+
 
