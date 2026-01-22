@@ -309,12 +309,13 @@ def run(iefc_data,
     """
     
     start = time.time()
-    starting_itr = len(iefc_data['commands']) + 1
-    total_command = copy.copy(iefc_data['commands'][-1]) if len(iefc_data['commands'])>0 else xp.zeros((Nact,Nact))
 
     Nact = probe_modes.shape[1]
     Nmodes = calib_modes.shape[0]
     modal_matrix = calib_modes.reshape(Nmodes, -1).T
+
+    starting_itr = len(iefc_data['commands']) + 1
+    total_command = copy.copy(iefc_data['commands'][-1]) if len(iefc_data['commands'])>0 else xp.zeros((Nact,Nact))
 
     for i in range(num_iterations):
         print(f"Running iteration {i+starting_itr} / {num_iterations+starting_itr-1}")
