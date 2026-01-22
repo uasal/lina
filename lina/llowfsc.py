@@ -1,5 +1,5 @@
 from .math_module import xp, xcipy, ensure_np_array
-from lina import utils, shmim_utils
+from lina import rt_utils, utils
 
 import numpy as np
 import astropy.units as u
@@ -97,33 +97,33 @@ def calibrate_with_fsm(
             amp = amps[i]
             amp_as = utils.tt_rms_to_as(amp, fsm_beam_diam)
             fsm_command = np.array([0, amp_as, 0])
-            shmim_utils.write(FSM_STREAM, fsm_command)
+            rt_utils.write(FSM_STREAM, fsm_command)
             time.sleep(delay)
-            im_pos = shmim_utils.stack(CAMLO_STREAM, NFRAMES)
-            shmim_utils.write(FSM_STREAM, -fsm_command)
+            im_pos = rt_utils.stack(CAMLO_STREAM, NFRAMES)
+            rt_utils.write(FSM_STREAM, -fsm_command)
             time.sleep(delay)
-            im_neg = shmim_utils.stack(CAMLO_STREAM, NFRAMES)
-            shmim_utils.write(FSM_STREAM, [0,0,0])
+            im_neg = rt_utils.stack(CAMLO_STREAM, NFRAMES)
+            rt_utils.write(FSM_STREAM, [0,0,0])
         elif i==1:
             amp = amps[i]
             amp_as = utils.tt_rms_to_as(amp, fsm_beam_diam)
             fsm_command = np.array([0, 0, amp_as])
-            shmim_utils.write(FSM_STREAM, fsm_command)
+            rt_utils.write(FSM_STREAM, fsm_command)
             time.sleep(delay)
-            im_pos = shmim_utils.stack(CAMLO_STREAM, NFRAMES)
-            shmim_utils.write(FSM_STREAM, -fsm_command)
+            im_pos = rt_utils.stack(CAMLO_STREAM, NFRAMES)
+            rt_utils.write(FSM_STREAM, -fsm_command)
             time.sleep(delay)
-            im_neg = shmim_utils.stack(CAMLO_STREAM, NFRAMES)
-            shmim_utils.write(FSM_STREAM, [0,0,0])
+            im_neg = rt_utils.stack(CAMLO_STREAM, NFRAMES)
+            rt_utils.write(FSM_STREAM, [0,0,0])
         else:
             amp = amps[i]
             mode = amp*dm_zer_modes[i-2]
             DM_STREAM.write( mode * 1e6 )
             time.sleep(delay)
-            im_pos = shmim_utils.stack(CAMLO_STREAM, NFRAMES)
+            im_pos = rt_utils.stack(CAMLO_STREAM, NFRAMES)
             DM_STREAM.write( -mode * 1e6 )
             time.sleep(delay)
-            im_neg = shmim_utils.stack(CAMLO_STREAM, NFRAMES)
+            im_neg = rt_utils.stack(CAMLO_STREAM, NFRAMES)
             DM_STREAM.write(np.zeros((Nact,Nact)))
 
         diff = im_pos - im_neg

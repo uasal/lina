@@ -64,6 +64,8 @@ def run(
         if fp_shift is not None:
             xcipy.ndimage.shift(diff_im_ni, (fp_shift[1], fp_shift[0]), order=0)
 
+        # set_dm_fun(base_command, **set_dm_params)
+
         probe_ef = compute_probe_ef_fun(probe, **compute_probe_ef_params)
 
         all_ims.append([im_pos, im_neg])

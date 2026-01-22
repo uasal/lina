@@ -1,5 +1,5 @@
 import numpy as np
-import astropy.units as u
+from astropy.io import fits
 from IPython.display import clear_output, display
 import subprocess
 import glob
@@ -8,12 +8,16 @@ import os
 import shutil
 import time
 
-import magpyx
-from magpyx.utils import ImageStream
-import purepyindi
-from purepyindi import INDIClient
-import purepyindi2
-from purepyindi2 import IndiClient
+try:
+    import magpyx
+    from magpyx.utils import ImageStream
+    import ImageStreamIOWrap as shmio
+    import purepyindi
+    from purepyindi import INDIClient
+    import purepyindi2
+    from purepyindi2 import IndiClient
+except:
+    print('Could not import all packages associated with XWC toolkit.')
 
 def toggle(on, channel, client, delay=None):
     client.wait_for_properties([f'telem_{channel}.writing'])
@@ -23,42 +27,44 @@ def toggle(on, channel, client, delay=None):
     else:
         client[f'telem_{channel}.writing.toggle'] = purepyindi.SwitchState.OFF
 
-def get_fnames(data_path):
-    return sorted(glob.glob(str(data_path)))
+def create_shmim(name, dims, dtype=None, shared=1, nbkw=8):
+    # if ImageStream objects didn't auto-open on creation, you could create and return that instead. oops.
+    img = shmio.Image() # not sure if I should try to destroy first in case it already exists
+    buffer = np.zeros(dims)
+    if dtype is None: dtype = shmio.ImageStreamIODataType.FLOAT
+    img.create(name, buffer, -1, True, 8, 1, dtype, 1)
 
-def make_dir(dir_path):
-    # Create the directory
+def write(STREAM, command):
     try:
-        os.mkdir(str(dir_path))
-        print(f"Directory '{str(dir_path)}' created successfully.")
-    except FileExistsError:
-        print(f"Directory '{str(dir_path)}' already exists.")
-    except PermissionError:
-        print(f"Permission denied: Unable to create '{str(dir_path)}'.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
+        STREAM.write(np.array([command]))
+    except:
+        STREAM.write(np.array([command]).T)
 
-def move_files(source_path, target_path):
-    file_names = os.listdir(str(source_path))
-    for fname in file_names:
-        shutil.move(str(source_path/fname), str(target_path/fname))
-
-def delete_files(dir_path):
-    fnames = sorted(glob.glob(str(dir_path)))
-    for fname in fnames:
+def zero(STREAMS):
+    for STREAM in STREAMS:
         try:
-            if os.path.isfile(fname) or os.path.islink(fname):
-                os.unlink(fname)
-            elif os.path.isdir(fname):
-                shutil.rmtree(fname)
-        except Exception as e:
-            print('Failed to delete %s. Reason: %s' % (fname, e))
+            STREAM.write(np.zeros(STREAM.shape))
+        except:
+            STREAM.write(np.zeros(STREAM.shape[::-1]))
+
+def write_dm(STREAM, command):
+    STREAM.write(1e6*np.array([command]))
+
+def stack(
+        STREAM, 
+        NFRAMES=1, 
+    ):
+
+    return np.mean(STREAM.grab_many(NFRAMES), axis=0)
+
+class Process(threading.Timer):  
+    def run(self):
+        while not self.finished.wait(self.interval):  
+            self.function(*self.args, **self.kwargs)
 
 def unpack_data(telem_path, data_path):
     subprocess.run(['xrif2fits', '-d', str(telem_path), '-D', str(data_path)])
     clear_output()
-
-from astropy.io import fits
 
 def read_telem_times(data_fnames, absolute=False):
     data_times = []

@@ -257,7 +257,12 @@ class MODEL():
             return E_FP, E_EP, DM_PHASOR
         else:
             return E_FP
-        
+
+    def calc_wf(self):
+        dm_command = xp.sum(self.dm_commands, axis=0)
+        E_FP = self.forward(dm_command[self.dm_mask], self.wavelength, self.use_vortex)
+        return E_FP
+
     def snap(self):
         dm_command = xp.sum(self.dm_commands, axis=0)
         E_FP = self.forward(dm_command[self.dm_mask], self.wavelength, self.use_vortex)
