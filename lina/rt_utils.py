@@ -20,20 +20,34 @@ try:
 except:
     print('Could not import all packages associated with XWC toolkit.')
 
-def toggle(on, channel, client, delay=None):
-    client.wait_for_properties([f'telem_{channel}.writing'])
-    if delay is not None: time.sleep(delay)
-    if on:
-        client[f'telem_{channel}.writing.toggle'] = purepyindi.SwitchState.ON
-    else:
-        client[f'telem_{channel}.writing.toggle'] = purepyindi.SwitchState.OFF
+def create_shmim(shmim_name, shape, dtype=np.float32):
+    img = shmio.Image()
+    buffer = np.zeros(shape, dtype=dtype)
+    img.create(shmim_name, buffer)
 
-def create_shmim(name, dims, dtype=None, shared=1, nbkw=8):
-    # if ImageStream objects didn't auto-open on creation, you could create and return that instead. oops.
-    img = shmio.Image() # not sure if I should try to destroy first in case it already exists
-    buffer = np.zeros(dims)
-    if dtype is None: dtype = shmio.ImageStreamIODataType.FLOAT
-    img.create(name, buffer, -1, True, 8, 1, dtype, 1)
+def change_shmim_permissions(
+        shmim_name,
+        target_user,
+        target_group='magaox-dev',
+    ):
+    # shmim_name = 'camscigain.im.shm'
+    filename = f"/milk/shm/{shmim_name}.im.shm"
+
+    # Get UID and GID from names (Unix-specific)
+    try:
+        uid = pwd.getpwnam(target_user).pw_uid
+        gid = grp.getgrnam(target_group).gr_gid
+    except KeyError as e:
+        print(f"Error: User or group not found. {e}")
+        exit()
+    # Change the owner and group
+    os.chown(filename, uid, gid)
+
+    # Set specific permissions (e.g., owner read/write, group read, others no access - 0o640)
+    # Use 0o prefix for octal in Python 3.x
+    permissions = stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP
+    # Equivalent to octal 0o640
+    os.chmod(filename, permissions)
 
 def write(STREAM, command):
     try:
@@ -62,6 +76,14 @@ class Process(threading.Timer):
     def run(self):
         while not self.finished.wait(self.interval):  
             self.function(*self.args, **self.kwargs)
+
+def toggle_telem(on, channel, client, delay=None):
+    client.wait_for_properties([f'telem_{channel}.writing'])
+    if delay is not None: time.sleep(delay)
+    if on:
+        client[f'telem_{channel}.writing.toggle'] = purepyindi.SwitchState.ON
+    else:
+        client[f'telem_{channel}.writing.toggle'] = purepyindi.SwitchState.OFF
 
 def unpack_data(telem_path, data_path):
     subprocess.run(['xrif2fits', '-d', str(telem_path), '-D', str(data_path)])
