@@ -7,6 +7,7 @@ from pathlib import Path
 import os
 import shutil
 import time
+import threading
 
 try:
     import magpyx
