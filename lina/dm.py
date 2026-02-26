@@ -67,6 +67,7 @@ def create_fourier_modes(
         which='both', 
         return_fs=False,
         return_np=False,
+        plot=False,
     ):
     Nact = dm_mask.shape[0]
     nfg = int(xp.round(npsf * psf_pixelscale_lamD/fourier_sampling))
@@ -78,9 +79,15 @@ def create_fourier_modes(
         fourier_sampling, 
         iwa-fourier_sampling, 
         owa+fourier_sampling, 
-        edge=iwa-fourier_sampling, 
+        # edge=iwa-fourier_sampling, 
+        edge=0,
         rotation=rotation,
     )
+    if plot: 
+        utils.imshow(
+            [fourier_cm],
+            titles=['Mask for Fourier Modes']
+        )
     ypp, xpp = (xp.indices((Nact, Nact)) - Nact//2 + 1/2)
 
     sampled_fs = xp.array([xf[fourier_cm], yf[fourier_cm]]).T
@@ -115,21 +122,19 @@ def create_fourier_probes(
         shifts=None, nprobes=2,
         use_weighting=False, 
         return_np=False,
+        plot=False,
     ): 
     Nact = dm_mask.shape[0]
 
-    cos_modes, fs = create_fourier_modes(
+    fourier_modes, fs = create_fourier_modes(
         dm_mask, npsf, psf_pixelscale_lamD, iwa, owa, rotation,
         fourier_sampling=fourier_sampling, 
         return_fs=True,
-        which='cos',
+        which='both',
+        plot=plot,
     )
-
-    sin_modes = create_fourier_modes(
-        dm_mask, npsf, psf_pixelscale_lamD, iwa, owa, rotation,
-        fourier_sampling=fourier_sampling, 
-        which='sin',
-    )
+    cos_modes = fourier_modes[::2]
+    sin_modes = fourier_modes[1::2]
 
     nfs = fs.shape[0]
 
@@ -159,6 +164,14 @@ def create_fourier_probes(
         probe = cos_weights[i]*sum_cos + sin_weights[i]*sum_sin
         probe = xcipy.ndimage.shift(probe, (shifts[i][1], shifts[i][0]))
         probes[i] = probe/xp.max(probe)
+
+        if plot: 
+            probe_response = xp.abs(xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(utils.pad_or_crop(probes[i], int(4*Nact))))))
+            utils.imshow(
+                [probes[i], probe_response],
+                titles=[f'Fourier Probe {i+1}', f'Focal Plane Response'],
+                cmaps=['viridis', 'magma'],
+            )
 
     if return_np:
         return ensure_np_array(probes)

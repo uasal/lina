@@ -219,7 +219,7 @@ def make_response_matrix(
         wfs_mask,
     ):
     Nmodes = response_cube.shape[0]
-    response_matrix = response_cube[:, :, wfs_mask.ravel()].reshape(Nmodes, -1).T
+    response_matrix = response_cube[:, :, wfs_mask].reshape(Nmodes, -1).T
     return response_matrix
 
 def init_data():

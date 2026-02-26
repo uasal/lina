@@ -224,15 +224,6 @@ def measure_waffle_center_and_angle(
     centroids[[2,3]] = centroids[[3,2]]
     if verbose: print('Centroids:\n', centroids)
 
-    if plot: 
-        patches = []
-        for i in range(4): patches.append(Circle(centroids[i], 1, fill=False, color='black'))
-        utils.imshow(
-            [waffle_mask, waffle_im, waffle_mask*waffle_im], 
-            norms=[LogNorm(np.max(waffle_im)/1e4)],
-            all_patches=[patches],
-        )
-
     mean_angle = 0.0
     for i in range(4):
         angle = np.arctan2(centroids[i+1][1] - centroids[i][1], centroids[i+1][0] - centroids[i][0]) * 180/np.pi
@@ -263,9 +254,24 @@ def measure_waffle_center_and_angle(
     print('Measured center in X: ', xc)
     print('Measured center in Y: ', yc)
 
-    xshift = np.round(npsf/2 - xc)
-    yshift = np.round(npsf/2 - yc)
+    xshift = -np.round(npsf/2 - xc)
+    yshift = -np.round(npsf/2 - yc)
     print('Required shift in X: ', xshift)
     print('Required shift in Y: ', yshift)
 
+    if plot: 
+        patches1, patches2 = [], []
+        for i in range(4): 
+            patches1.append(Circle(centroids[i]-npsf//2, 1, fill=False, color='black'))
+            patches2.append(Circle(centroids[i]-npsf//2, 1, fill=False, color='black'))
+        patches1.append(Circle((xshift,yshift), 3, fill=True, color='red'))
+        patches2.append(Circle((xshift,yshift), 3, fill=True, color='red'))
+        utils.imshow(
+            [waffle_im, waffle_mask, waffle_mask*waffle_im], 
+            norms=[LogNorm(np.max(waffle_im)/1e4), LogNorm(np.max(waffle_im)/1e4), LogNorm(np.max(waffle_im)/1e4)],
+            pxscls=3*[1],
+            grids=3*[1],
+            all_patches=[patches1, patches2],
+        )
+    
     return xshift, yshift, mean_angle
