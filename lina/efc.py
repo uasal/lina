@@ -100,6 +100,7 @@ def run(efc_data,
         set_dm_params,
         estimate_ef_fun,
         estimate_ef_params,
+        wfs_mask_mw,
         wfs_mask,
         dm_mask,
         control_matrix,
@@ -158,7 +159,7 @@ def run(efc_data,
             Dictionary of EFC data appended with the results of the new iterations performed. 
     """
     
-    Nmask = int(wfs_mask.sum())
+    Nmask = int(wfs_mask_mw.sum())
     Nact = dm_mask.shape[0]
 
     starting_itr = len(efc_data['commands']) + 1
@@ -170,8 +171,8 @@ def run(efc_data,
         print(f'Running iteration {starting_itr+i:d}')
 
         E_ab = estimate_ef_fun(**estimate_ef_params)
-        E_ab_vec[::2] = xp.real(E_ab[wfs_mask])
-        E_ab_vec[1::2] = xp.imag(E_ab[wfs_mask])
+        E_ab_vec[::2] = xp.real(E_ab[wfs_mask_mw])
+        E_ab_vec[1::2] = xp.imag(E_ab[wfs_mask_mw])
 
         del_acts = - gain * control_matrix.dot(E_ab_vec)
         del_command[dm_mask] = del_acts

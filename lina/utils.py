@@ -295,6 +295,18 @@ def create_zernike_modes(pupil_mask, nmodes=15, remove_modes=0, return_np=False)
     
     return zernikes
 
+def create_all_poke_modes(dm_mask):
+    Nact = dm_mask.shape[0]
+    Nacts = int(np.sum(dm_mask))
+    poke_modes = xp.zeros((Nacts, Nact, Nact))
+    count=0
+    for i in range(Nact):
+        for j in range(Nact):
+            if dm_mask[i,j]:
+                poke_modes[count, i,j] = 1
+                count+=1
+    return poke_modes
+
 def lstsq(modes, data):
     """Least-Squares fit of modes to data.
 
