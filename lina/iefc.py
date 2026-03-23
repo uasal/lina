@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 plt.rcParams['image.origin'] = 'lower'
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colors import LogNorm, Normalize, CenteredNorm
-    
+
 def measure_probe_response(
         take_im_fun,
         take_im_params,
@@ -22,7 +22,7 @@ def measure_probe_response(
         base_command=None,
         normalize_diff_fun=None,
         normalize_diff_params=None,
-        plot=False
+        plot=False,
     ):
     """
     This will measure the difference images for a provided set of DM probes. 
@@ -251,6 +251,7 @@ def run(iefc_data,
         normalize_metric_params=None,
         plot_current=True,
         plot_all=False,
+        plot_probe_responses=False,
         vmin=1e-10,
         vmax=1e-5,
     ):
@@ -329,6 +330,7 @@ def run(iefc_data,
             base_command=total_command,
             normalize_diff_fun=normalize_diff_fun,
             normalize_diff_params=normalize_diff_params,
+            plot=plot_probe_responses,
         )
         measurement_vector = diff_ims[:, wfs_mask].ravel()
 
@@ -402,153 +404,6 @@ def compute_hadamard_scale_factors(had_modes, scale_exp=1/6, scale_thresh=4, iwa
         plt.show()
 
     return scale_factors
-
-def calibrate_bb(
-        CAMSCI_STREAM, 
-        NCAMSCI,
-        DM_STREAM, 
-        im_params,
-        ref_psf_params,
-        wfs_mask, 
-        probe_amplitude, 
-        probe_modes, 
-        calibration_amplitude, 
-        calibration_modes,
-        switch_filter_fun,
-        switch_filter_fun_params,
-        delay=0.01,
-        scale_factors=None, 
-        plot_responses=False, 
-    ):
-    print('Calibrating iEFC...')
-
-    Nact = probe_modes.shape[1]
-    Nprobes = probe_modes.shape[0]
-    Nmodes = calibration_modes.shape[0]
-    Nmask = int(wfs_mask.sum())
-    Ncamsci = CAMSCI_STREAM.shape[0]
-    Nfilters = len(switch_filter_fun_params)
-
-    bb_response_matrix = np.zeros((Nmodes, Nfilters*Nprobes*Nmask))
-    all_response_cubes = []
-    for i in range(Nfilters):
-        switch_filter_fun(**switch_filter_fun_params)
-
-        nb_response_matrix, nb_response_cube = calibrate(
-            CAMSCI_STREAM, 
-            NCAMSCI,
-            DM_STREAM, 
-            im_params,
-            ref_psf_params,
-            wfs_mask, 
-            probe_amplitude, 
-            probe_modes, 
-            calibration_amplitude, 
-            calibration_modes,
-            delay=delay,
-            scale_factors=scale_factors, 
-            plot_responses=plot_responses, 
-        )
-
-        bb_response_matrix[:,i*Nprobes*Nmask:(i+1)*Nprobes*Nmask] = nb_response_matrix
-        all_response_cubes.append(nb_response_cube)
-    
-    all_response_cubes = np.array(all_response_cubes)
-
-    return bb_response_matrix, all_response_cubes
-
-
-def run_bb(
-        iefc_data,
-        take_im_fun,
-        take_im_params,
-        set_dm_fun,
-        set_dm_params,
-        control_matrix,
-        probe_modes,
-        probe_amplitude, 
-        calib_modes,
-        waves,
-        client,
-        dm_delay=0.05,
-        filter_delay=3.0,
-        num_iterations=3,
-        gain=1.0, 
-        leakage=0.0,
-        plot_current=True,
-        plot_all=False,
-        vmin=1e-9,
-    ):
-    
-    start = time.time()
-    starting_itr = len(iefc_data['images'])
-
-    Nact = probe_modes.shape[1]
-    Nmodes = calib_modes.shape[0]
-    modal_matrix = calib_modes.reshape(Nmodes, -1).T
-
-    Nprobes = probe_modes.shape[0]
-    Nmask = int(np.sum(wfs_mask))
-    Nwaves = len(waves)
-
-    total_command = DM_STREAM.grab_latest() / 1e6
-
-    for i in range(num_iterations):
-        print(f"Running iteration {i+starting_itr} / {num_iterations+starting_itr-1}")
-        measurement_vector_bb = np.zeros(Nwaves*Nprobes*Nmask)
-        for j in range(Nwaves):
-            # SET FILTER TO CORRECT POSITION
-            coro_utils.switch_filter_stage(j+1, client, filter_delay)
-            
-            diff_ims_nb = measure_probe_response(
-                CAMSCI_STREAM, 
-                NCAMSCI,
-                DM_STREAM, 
-                im_params[j + 1],
-                ref_psf_params[j + 1],
-                probe_modes,
-                probe_amplitude, 
-                delay=dm_delay,
-            )
-
-            measurement_vector_nb = diff_ims_nb[:, wfs_mask].ravel()
-            measurement_vector_bb[j**Nprobes*Nmask:(j+1)*Nprobes*Nmask] = measurement_vector_nb
-        
-        coro_utils.switch_filter_stage(1, client, filter_delay)
-
-        modal_coeff = -control_matrix.dot(measurement_vector_bb)
-        del_command = gain * modal_matrix.dot(modal_coeff).reshape(Nact, Nact)
-        total_command = (1.0 - leakage) * total_command + del_command
-        
-        DM_STREAM.write( total_command * 1e6 )
-        time.sleep(dm_delay)
-
-        print(f"Measuring dark hole state ...")
-        coro_im = np.mean(CAMSCI_STREAM.grab_many(NCAMSCI), axis=0)
-        coro_im_ni = coro_utils.normalize_coro_im(coro_im, im_params, ref_psf_params, dark_im)
-        contrast = coro_utils.compute_contrast(coro_im_ni, wfs_mask)
-
-        iefc_data['images'].append(copy.copy(coro_im_ni))
-        iefc_data['contrasts'].append(copy.copy(contrast))
-        iefc_data['commands'].append(copy.copy(total_command))
-        iefc_data['del_commands'].append(copy.copy(del_command))
-    
-        if plot_current: 
-            if not plot_all: clear_output(wait=True)
-            utils.imshow(
-                [del_command, total_command, coro_im_ni], 
-                titles=[f'Iteration {starting_itr + i:d}: $\delta$DM', 
-                        'Total DM Command', 
-                        f'Normalized Image\nMean Contrast = {contrast:.3e}'],
-                cmaps=['viridis', 'viridis', 'magma'],
-                pxscls=[None, None, None],
-                norms=[CenteredNorm(), None, LogNorm(vmin=vmin)],
-            )
-
-    print(f'Completed {num_iterations:d} iterations in {time.time()-start:.3f}s.')
-    return iefc_data
-
-
 
 
 
