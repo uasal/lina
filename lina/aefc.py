@@ -14,7 +14,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colors import LogNorm, Normalize, CenteredNorm
 from matplotlib.gridspec import GridSpec
 
-def init_aefc_data():
+def init_data():
     aefc_data = {
         'raw_images':[],
         'ni_images':[],
@@ -35,24 +35,26 @@ def run(
         set_dm_params,
         estimate_ef_fun,
         estimate_ef_params,
-        wfs_mask,
-        dm_mask,
         M, 
         val_and_grad,
-        fp_shift=None,
-        normalize_metric_fun=None,
-        normalize_metric_params=None,
-        num_iterations=3, 
+        wfs_mask,
+        dm_mask,
         reg_cond=1e-2,
         bfgs_tol=1e-3,
         bfgs_opts=None,
+        num_iterations=3, 
         gain=1.0, 
         leakage=0.0, 
+        fp_shift=None,
+        normalize_metric_fun=None,
+        normalize_metric_params=None,
         verbose=False,
         plot_current=True,
         plot_all=False,
-        vmin=1e-9,  
+        vmin=1e-10,  
     ):
+
+    Nact = dm_mask.shape[0]
 
     starting_itr = len(aefc_data['commands']) + 1
     total_command = copy.copy(aefc_data['commands'][-1]) if len(aefc_data['commands'])>0 else xp.zeros((Nact,Nact))

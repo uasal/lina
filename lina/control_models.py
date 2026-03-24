@@ -30,8 +30,8 @@ class MODEL():
             self,
             wavelength_c=630e-9,
             wavelength=None, 
-            npix=500,
-            Ndef=502,
+            npix=512,
+            Ndef=None,
             N_vortex_lres=2048,
             vortex_win_diam=30, # diameter of the Tukey window in lambda/D to apply for the vortex model 
             vortex_hres_sampling=0.025, # lam/D per pixel; this value is chosen empirically
@@ -69,7 +69,7 @@ class MODEL():
         self.as_per_lamD = ((self.wavelength / (self.dm_beam_diam*self.lyot_ratio) )*u.radian).to(u.arcsec)
         
         self.npix = npix
-        self.Ndef = Ndef
+        self.Ndef = npix + 2 if Ndef is None else Ndef
         self.def_oversample = self.Ndef / self.npix
         self.ncamsci = ncamsci
 
@@ -285,11 +285,11 @@ def val_and_grad(
     current_acts = xp.array(rmad_vars['current_acts'])
     E_ab = xp.array(rmad_vars['E_ab'])
     E_FP_NOM = xp.array(rmad_vars['E_FP_NOM'])
-    control_mask = xp.array(rmad_vars['control_mask'])
+    wfs_mask = xp.array(rmad_vars['wfs_mask'])
     wavelength = rmad_vars['wavelength']
     r_cond = rmad_vars['r_cond']
 
-    E_ab_l2norm = E_ab[control_mask].dot(E_ab[control_mask].conjugate()).real
+    E_ab_l2norm = E_ab[wfs_mask].dot(E_ab[wfs_mask].conjugate()).real
 
     # Compute E_DM using the forward DM model
     E_FP_with_delA, E_EP, DM_PHASOR = M.forward(
@@ -302,7 +302,7 @@ def val_and_grad(
 
     # compute the cost function
     E_predicted = E_ab + deltaE # take the measured E-field and add the model-based deltaE from new actuator command
-    E_predicted_vec = E_predicted[control_mask] # make sure to do array indexing
+    E_predicted_vec = E_predicted[wfs_mask] # make sure to do array indexing
     J_delE = E_predicted_vec.dot(E_predicted_vec.conjugate()).real
     J_c = r_cond * del_acts_waves.dot(del_acts_waves)
     J = (J_delE + J_c) / E_ab_l2norm
@@ -313,10 +313,10 @@ def val_and_grad(
         print(f'\tTotal cost-function value: {J:.2e}\n')
 
     # Compute the gradient with the adjoint model
-    # delE_masked = control_mask * delE # still a 2D array
+    # delE_masked = wfs_mask * delE # still a 2D array
     # delE_masked = xcipy.ndimage.rotate(delE_masked, -M.det_rotation, reshape=False, order=5)
     # dJ_dE_delA = 2 * delE_masked / E_ab_l2norm
-    E_predicted_masked = control_mask * E_predicted # still a 2D array
+    E_predicted_masked = wfs_mask * E_predicted # still a 2D array
     E_predicted_masked = xcipy.ndimage.rotate(E_predicted_masked, -M.camsci_rotation, reshape=False, order=5)
     dJ_ddeltaE = 2 * E_predicted_masked / E_ab_l2norm
 
@@ -372,7 +372,15 @@ def val_and_grad(
             xp.real(dJ_dS_DM), xp.imag(dJ_dS_DM),
             xp.real(dJ_dA), xp.imag(dJ_dA),], 
             titles=[
-                'EP Amplitude', 'EP Phase',
+                'Intensity', 'Phase',
+                'Amplitude', 'Phase',
+                'Amplitude', 'Phase',
+                'Amplitude', 'Phase',
+                'Amplitude', 'Phase',
+                'Amplitude', 'Phase',
+                'Amplitude', 'Phase',
+                'Real', 'Imaginary',
+                'Real', 'Imaginary',
             ],
             # npix=8*[int(1.2*self.npix)], 
             cmaps=8*['plasma', 'twilight'],
@@ -389,7 +397,7 @@ def val_and_grad_bb(
         M, 
         actuators, 
         E_abs, 
-        control_mask, 
+        wfs_mask, 
         waves, 
         r_cond, 
         weights=None, 
@@ -397,7 +405,7 @@ def val_and_grad_bb(
         plot=False, 
         fancy_plot=False, 
     ):
-    # del_acts, M, actuators, E_ab, control_mask, wavelength, r_cond,
+    # del_acts, M, actuators, E_ab, wfs_mask, wavelength, r_cond,
     Nwaves = len(waves)
 
     del_acts_waves = del_acts/M.wavelength_c
@@ -413,7 +421,7 @@ def val_and_grad_bb(
             M, 
             actuators, 
             E_ab, 
-            control_mask, 
+            wfs_mask, 
             wavelength, 
             r_cond_mono, 
             verbose=verbose, 
