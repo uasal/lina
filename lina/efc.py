@@ -100,10 +100,10 @@ def run(efc_data,
         set_dm_params,
         estimate_ef_fun,
         estimate_ef_params,
-        wfs_mask_mw,
         wfs_mask,
         dm_mask,
         control_matrix,
+        wfs_mask_mw = None,
         normalize_metric_fun=None,
         normalize_metric_params=None,
         num_iterations=3, 
@@ -142,6 +142,8 @@ def run(efc_data,
         control_matrix (ndarray): 
             Pseudo-inverted response matrix for the region of interest specified 
             by the wfs_mask. 
+        wfs_mask_mw (ndarray):
+            Binary mask defining the region in the focal plane to control when using multi band WFS.
         normalize_metric_fun (callable, optional): 
             Function that normalizes the metric image used to evaluate current contrast. If take_im_fun
             automatically returns normalized intensity images, this is not needed. Defaults to None.
@@ -158,6 +160,9 @@ def run(efc_data,
         efc_data (dict): 
             Dictionary of EFC data appended with the results of the new iterations performed. 
     """
+
+    if wfs_mask_mw == None:    # set multi wave mask to single wave mask if not provided with one
+        wfs_mask_mw = wfs_mask
     
     Nmask = int(wfs_mask_mw.sum())
     Nact = dm_mask.shape[0]
