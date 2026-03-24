@@ -161,7 +161,7 @@ def run(efc_data,
             Dictionary of EFC data appended with the results of the new iterations performed. 
     """
 
-    if wfs_mask_mw == None:    # set multi wave mask to single wave mask if not provided with one
+    if wfs_mask_mw is None:    # set multi wave mask to single wave mask if not provided with one
         wfs_mask_mw = wfs_mask
     
     Nmask = int(wfs_mask_mw.sum())
