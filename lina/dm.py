@@ -55,6 +55,22 @@ def create_hadamard_modes(dm_mask, return_np=False):
         return ensure_np_array(had_modes)
     
     return had_modes
+
+def create_all_poke_modes(dm_mask, return_np=False):
+    Nact = dm_mask.shape[0]
+    Nacts = int(np.sum(dm_mask))
+    poke_modes = xp.zeros((Nacts, Nact, Nact))
+    count=0
+    for i in range(Nact):
+        for j in range(Nact):
+            if dm_mask[i,j]:
+                poke_modes[count, i,j] = 1
+                count+=1
+    
+    if return_np:
+        return ensure_np_array(had_modes)
+        
+    return poke_modes
     
 def create_fourier_modes(
         dm_mask, 
