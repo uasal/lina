@@ -77,7 +77,8 @@ def calibrate(
         dm_response_map = xp.zeros(dm_mask.shape)
         dm_response_map[dm_mask] = dm_response_rms/dm_response_rms.max()
         utils.imshow(
-            [dm_response_map]
+            [dm_response_map],
+            norms=[LogNorm(1e-2)],
         )
 
     return jac
