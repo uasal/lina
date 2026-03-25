@@ -443,7 +443,7 @@ def val_and_grad_mw(
     mono_rmad_vars = {
         'current_acts':current_acts,
         'wfs_mask':wfs_mask,
-        'r_cond':0,
+        'r_cond':r_cond,
     }
 
     J_monos = np.zeros(Nwaves)
@@ -478,6 +478,13 @@ def val_and_grad_mw(
 
     J_bb = np.sum(J_monos)/Nwaves
     dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves
+
+    # if weights is None: 
+    #     J_bb = np.sum(J_monos)/Nwaves
+    #     dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves
+    # else: 
+    #     J_bb = np.sum(weights * J_monos) / np.sum(weights)
+    #     dJ_dA_bb = np.sum(weights[:, None] * dJ_dA_monos, axis=0) / np.sum(weights)
     
     return J_bb, dJ_dA_bb
 

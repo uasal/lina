@@ -140,6 +140,7 @@ def run_mw(
         num_iterations=3, 
         gain=1.0, 
         leakage=0.0, 
+        weights=None, 
         fp_shift=None,
         normalize_metric_fun=None,
         normalize_metric_params=None,
@@ -154,23 +155,28 @@ def run_mw(
     starting_itr = len(aefc_data['commands']) + 1
     total_command = copy.copy(aefc_data['commands'][-1]) if len(aefc_data['commands'])>0 else xp.zeros((Nact,Nact))
 
+    rmad_vars = {
+        'wfs_mask':wfs_mask,
+        'wfs_waves':wfs_waves,
+        'r_cond':reg_cond, 
+        'weights':weights,
+    }
+
     del_command = xp.zeros(dm_mask.shape) # array to fill with actuator solutions
     for i in range(num_iterations):
         print(f'Running iteration {starting_itr+i:d}')
 
+        current_acts = total_command[dm_mask]
+
         E_abs = estimate_ef_fun(**estimate_ef_params)
 
-        current_acts = total_command[dm_mask]
         E_FP_NOMs = M.forward_mw(current_acts, wfs_waves, use_vortex=True, return_ints=False)
 
-        rmad_vars= {
-            'E_abs': E_abs,
+        rmad_vars.update({
             'current_acts': current_acts,
+            'E_abs': E_abs,
             'E_FP_NOMs': E_FP_NOMs,
-            'wfs_mask': wfs_mask,
-            'wfs_waves':wfs_waves,
-            'r_cond': reg_cond, 
-        }
+        })
 
         res = minimize(
             val_and_grad, 
