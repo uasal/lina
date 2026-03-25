@@ -257,6 +257,20 @@ class MODEL():
             return E_FP, E_EP, DM_PHASOR
         else:
             return E_FP
+        
+    def forward_mw(
+            self, 
+            actuators,
+            waves, 
+            wavelength=None, 
+            use_vortex=True, 
+            return_ints=False, 
+        ):
+        E_FPs = []
+        for i in range(len(waves)):
+            E_FPs.append(self.forward(actuators, waves[i], use_vortex=True, return_ints=False))
+        E_FPs = xp.array(E_FPs)
+        return E_FPs
 
     def calc_wf(self):
         dm_command = xp.sum(self.dm_commands, axis=0)
@@ -268,8 +282,14 @@ class MODEL():
         E_FP = self.forward(dm_command[self.dm_mask], self.wavelength, self.use_vortex)
         im = xp.abs(E_FP)**2
         return im
-
-
+    
+    def snap_bb(self, waves):
+        Nwaves = len(waves)
+        im = 0.0
+        for i in range(Nwaves):
+            self.wavelength = waves[i]
+            im += self.snap()/Nwaves
+        return im
 
 def val_and_grad(
         del_acts, 
@@ -392,48 +412,72 @@ def val_and_grad(
 
     return ensure_np_array(J), ensure_np_array(dJ_dA_vec)
 
-def val_and_grad_bb(
+def val_and_grad_mw(
         del_acts, 
         M, 
-        actuators, 
-        E_abs, 
-        wfs_mask, 
-        waves, 
-        r_cond, 
+        rmad_vars,
         weights=None, 
         verbose=False, 
-        plot=False, 
-        fancy_plot=False, 
+        plot=False,  
+        plot_all=False,
     ):
     # del_acts, M, actuators, E_ab, wfs_mask, wavelength, r_cond,
-    Nwaves = len(waves)
+    current_acts = xp.array(rmad_vars['current_acts'])
+    E_abs = xp.array(rmad_vars['E_abs'])
+    E_FP_NOMs = xp.array(rmad_vars['E_FP_NOMs'])
+    wfs_mask = xp.array(rmad_vars['wfs_mask'])
+    wfs_waves = rmad_vars['wfs_waves']
+    r_cond = rmad_vars['r_cond']
+
+    Nwaves = len(wfs_waves)
 
     del_acts_waves = del_acts/M.wavelength_c
 
-    r_cond_mono = 0
+    # current_acts = xp.array(rmad_vars['current_acts'])
+    # E_ab = xp.array(rmad_vars['E_ab'])
+    # E_FP_NOM = xp.array(rmad_vars['E_FP_NOM'])
+    # wfs_mask = xp.array(rmad_vars['wfs_mask'])
+    # wavelength = rmad_vars['wavelength']
+    # r_cond = rmad_vars['r_cond']
+
+    mono_rmad_vars = {
+        'current_acts':current_acts,
+        'wfs_mask':wfs_mask,
+        'r_cond':0,
+    }
+
     J_monos = np.zeros(Nwaves)
     dJ_dA_monos = np.zeros((Nwaves, M.Nacts))
     for i in range(Nwaves):
-        wavelength = waves[i]
-        E_ab = E_abs[i]
+        mono_rmad_vars.update({
+            'E_ab':E_abs[i],
+            'E_FP_NOM':E_FP_NOMs[i],
+            'wavelength':wfs_waves[i],
+        })
+
         J_mono, dJ_dA_mono = val_and_grad(
             del_acts, 
             M, 
-            actuators, 
-            E_ab, 
-            wfs_mask, 
-            wavelength, 
-            r_cond_mono, 
+            mono_rmad_vars,
             verbose=verbose, 
-            plot=plot, 
-            fancy_plot=fancy_plot,
+            plot=plot_all, 
         )
         
         J_monos[i] = J_mono
         dJ_dA_monos[i] = dJ_dA_mono
 
-    J_bb = np.sum(J_monos)/Nwaves + r_cond * del_acts_waves.dot(del_acts_waves)
-    dJ_dA_bb = np.sum(dJ_dA_monos, axis=0) + ensure_np_array( r_cond * 2*del_acts_waves )
+        if plot:
+            dm_grad = xp.zeros((M.Nact,M.Nact))
+            dm_grad[M.dm_mask] = dJ_dA_mono
+            utils.imshow(
+                [dm_grad]
+            )
+
+    # J_bb = np.sum(J_monos)/Nwaves + r_cond * del_acts_waves.dot(del_acts_waves)
+    # dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves + ensure_np_array( r_cond * 2*del_acts_waves )
+
+    J_bb = np.sum(J_monos)/Nwaves
+    dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves
     
     return J_bb, dJ_dA_bb
 
