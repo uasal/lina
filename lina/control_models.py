@@ -416,7 +416,6 @@ def val_and_grad_mw(
         del_acts, 
         M, 
         rmad_vars,
-        weights=None, 
         verbose=False, 
         plot=False,  
         plot_all=False,
@@ -428,6 +427,7 @@ def val_and_grad_mw(
     wfs_mask = xp.array(rmad_vars['wfs_mask'])
     wfs_waves = rmad_vars['wfs_waves']
     r_cond = rmad_vars['r_cond']
+    weights = rmad_vars['weights']
 
     Nwaves = len(wfs_waves)
 
@@ -443,7 +443,8 @@ def val_and_grad_mw(
     mono_rmad_vars = {
         'current_acts':current_acts,
         'wfs_mask':wfs_mask,
-        'r_cond':r_cond,
+        'r_cond':0,
+        # 'r_cond':r_cond,
     }
 
     J_monos = np.zeros(Nwaves)
@@ -476,8 +477,8 @@ def val_and_grad_mw(
     # J_bb = np.sum(J_monos)/Nwaves + r_cond * del_acts_waves.dot(del_acts_waves)
     # dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves + ensure_np_array( r_cond * 2*del_acts_waves )
 
-    J_bb = np.sum(J_monos)/Nwaves
-    dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves
+    # J_bb = np.sum(J_monos)/Nwaves
+    # dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves
 
     # if weights is None: 
     #     J_bb = np.sum(J_monos)/Nwaves
@@ -485,6 +486,14 @@ def val_and_grad_mw(
     # else: 
     #     J_bb = np.sum(weights * J_monos) / np.sum(weights)
     #     dJ_dA_bb = np.sum(weights[:, None] * dJ_dA_monos, axis=0) / np.sum(weights)
+
+    if weights is None: 
+        J_bb = np.sum(J_monos)/Nwaves + r_cond * del_acts_waves.dot(del_acts_waves)
+        dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves + ensure_np_array( r_cond * 2*del_acts_waves )
+    else: 
+        J_bb = np.sum(weights * J_monos) / np.sum(weights) + r_cond * del_acts_waves.dot(del_acts_waves)
+        dJ_dA_bb = np.sum(weights[:, None] * dJ_dA_monos, axis=0) / np.sum(weights) + ensure_np_array( r_cond * 2*del_acts_waves )
+
     
     return J_bb, dJ_dA_bb
 
