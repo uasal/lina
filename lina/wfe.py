@@ -10,6 +10,43 @@ import matplotlib.pyplot as plt
 
 import poppy
 
+def noll_index_to_mn(j):
+    # j is the Noll index of the Zernike term. 
+    # Note that Noll Zernikes start with j=1, which is the piston term. 
+    n = int(np.floor( (np.sqrt(8*(j-1) + 1) - 1)/2 ))
+    m = int( (-1)**j * ( n%2 + 2*np.floor( (j - n*(n+1)/2 - 1 + (n+1)%2 )/2 ) ))
+
+    return m,n
+
+def mn_to_noll_index(m,n):
+    assert isinstance(m, int) and isinstance(n, int)
+    if n%4<=1:
+        if m>0:
+            j = n*(n+1)/2 + abs(m) + 0
+        elif m<=0:
+            j = n*(n+1)/2 + abs(m) + 1
+    elif n%4>1:
+        if m<0:
+            j = n*(n+1)/2 + abs(m) + 0
+        elif m>=0:
+            j = n*(n+1)/2 + abs(m) + 1
+    return int(j)
+
+def fringe_index_to_mn(j):
+    g = np.ceil(np.sqrt(j) - 1)
+    n = g - 1 + np.ceil((j-g**2)/2)
+    m = (-1)**( (j-g**2)%2 + 1 ) * (2*g - n)
+    return int(m), int(n)
+
+def mn_to_fringe_index(m,n):
+    # j = (1 + (n + abs(m))/2)**2 - 2*abs(m) + 0 if m<=0 else 1
+    assert isinstance(m, int) and isinstance(n, int)
+    if 0<=m:
+        j = (1 + (n + abs(m))/2)**2 - 2*abs(m) + 0
+    elif 0>m:
+        j = (1 + (n + abs(m))/2)**2 - 2*abs(m) + 1
+    return int(j)
+
 def generate_opd(
         npix=1000, 
         oversample=1, 
@@ -113,18 +150,24 @@ def generate_freqs(
         return ensure_np_array(freqs), ensure_np_array(times)
     return freqs, times
 
-def kneePSD(
+def roll_psd(
         freqs, 
         beta, 
-        fn, 
-        alpha
+        f_roll, 
+        alpha,
+        normalized=True,
+        verbose=True,
     ):
-    psd = beta/(1+freqs/fn)**alpha
-    try:
-        psd.decompose()
-        return psd
-    except:
-        return psd
+    if normalized:
+        psd = beta**2 / (1+freqs/f_roll)**alpha * (alpha - 1)/f_roll # the last factor is to make sure the RMS of the PSD is normalized correctly
+    else:
+        psd = beta**2 / (1+freqs/f_roll)**alpha
+
+    if verbose: 
+        psd_rms = np.sqrt(scipy.integrate.simpson(ensure_np_array(psd), x=ensure_np_array(freqs)))
+        print(f'\tRMS of generated knee PSD: {psd_rms:.3e}')
+
+    return psd
 
 def generate_time_series(
         psd, 
