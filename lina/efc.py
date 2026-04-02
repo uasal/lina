@@ -190,6 +190,8 @@ def run(efc_data,
         metric_im_ni = metric_im if normalize_metric_fun is None else normalize_metric_fun(metric_im, **normalize_metric_params)
         contrast = coro_utils.compute_contrast(metric_im_ni, wfs_mask)
 
+        print(f'\tContrast = {contrast:.3e}.')
+
         efc_data['raw_images'].append(copy.copy(metric_im))
         efc_data['ni_images'].append(copy.copy(metric_im_ni))
         efc_data['contrasts'].append(copy.copy(contrast))
