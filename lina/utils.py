@@ -32,7 +32,7 @@ def make_grid(npix, pixelscale=1, half_shift=False):
         y,x = (xp.indices((npix, npix)) - npix//2)*pixelscale
     return x,y
 
-def pad_or_crop( arr_in, npix ):
+def pad_or_crop( arr_in, npix):
     n_arr_in = arr_in.shape[0]
     if n_arr_in == npix:
         return arr_in
@@ -41,7 +41,7 @@ def pad_or_crop( arr_in, npix ):
         x2 = x1 + npix
         arr_out = arr_in[x1:x2,x1:x2].copy()
     else:
-        arr_out = xp.zeros((npix,npix), dtype=arr_in.dtype)
+        arr_out = np.zeros((npix,npix), dtype=arr_in.dtype) if isinstance(arr_in, np.ndarray) else xp.zeros((npix,npix), dtype=arr_in.dtype)
         x1 = npix // 2 - n_arr_in // 2
         x2 = x1 + n_arr_in
         arr_out[x1:x2,x1:x2] = arr_in
@@ -322,6 +322,7 @@ def lstsq(modes, data):
     return c
 
 def tikhonov_inverse(A, rcond=1e-15, return_all=False, return_np=False):
+    A = xp.array(A)
     U, s, Vt = xp.linalg.svd(A, full_matrices=False)
     s_inv = s/(s**2 + (rcond * s.max())**2)
     P = (Vt.T * s_inv).dot(U.T)

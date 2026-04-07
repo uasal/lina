@@ -52,10 +52,10 @@ def calibrate_dm_modes(
     Nact = dm_modes.shape[1]
     Ncamlo = wfs_mask.shape[0]
 
-    if base_command is None: base_command = xp.zeros((Nact, Nact))
+    if base_command is None: base_command = np.zeros((Nact, Nact))
 
-    response_matrix = xp.zeros((Nmask, Nmodes))
-    response_cube = xp.zeros((Nmodes, Ncamlo, Ncamlo))
+    response_matrix = np.zeros((Nmask, Nmodes))
+    response_cube = np.zeros((Nmodes, Ncamlo, Ncamlo))
     
     start = time.time()
     for i in range(Nmodes):
@@ -66,6 +66,8 @@ def calibrate_dm_modes(
 
         set_dm_fun(base_command - dm_mode, **set_dm_params)
         im_neg = take_im_fun(**take_im_params)
+
+        set_dm_fun(base_command, **set_dm_params)
 
         diff = im_pos - im_neg
         response_cube[i] = copy.copy(diff) / (2 * amp)
@@ -145,118 +147,39 @@ def run(
         take_im_params,
         set_dm_fun,
         set_dm_params,
+        get_dm_fun,
+        get_dm_params,
         ref_im,
         control_matrix,
         dm_modes,
         wfs_mask,
         gains,
         dark_im=0.0,
+        get_zpo=None,
+        get_zpo_params={},
+        get_ffo=None,
+        get_ffo_params={},
     ):
 
     camlo_im = take_im_fun(**take_im_params)
 
+    zpo = get_zpo(**get_zpo_params) if get_zpo is not None else 0.0
     recon_coeff = reconstruct(
         camlo_im, 
-        ref_im, 
+        ref_im + zpo, 
         wfs_mask,
         control_matrix,
         dark_im=dark_im,
         modes=(0,10),
     )
-
-    modal_coeff = - gains * recon_coeff
-
-    dm_command = xp.sum(modal_coeff[:, None, None] * dm_modes, axis=0)
-
-    set_dm_fun(dm_command, **set_dm_params)
-
-def run_with_zpo(
-        take_im_fun,
-        take_im_params,
-        set_dm_fun,
-        set_dm_params,
-        get_zpo,
-        get_zpo_params,
-        control_matrix,
-        dm_modes,
-        wfs_mask,
-        ref_im,
-        gains,
-    ):
-
-    camlo_im = take_im_fun(**take_im_params)
-
-    zpo = get_zpo(**get_zpo_params)
-    recon_coeff = reconstruct(
-        camlo_im, 
-        wfs_mask,
-        control_matrix,
-        ref_im + zpo, 
-        dark_im=0.0,
-        modes=(0,10),
-    )
-    modal_coeff = - gains * recon_coeff
-
-    dm_command = xp.sum(modal_coeff[:, None, None] * dm_modes, axis=0)
-
-    set_dm_fun(dm_command, **set_dm_params)
-
-def run_with_ffo(
-        take_im_fun,
-        take_im_params,
-        set_dm_fun,
-        set_dm_params,
-        get_ffo,
-        get_ffo_params,
-        control_matrix,
-        dm_modes,
-        wfs_mask,
-        ref_im,
-        gains,
-    ):
-
-    camlo_im = take_im_fun(**take_im_params)
-
-    recon_coeff = reconstruct(
-        camlo_im, 
-        wfs_mask,
-        control_matrix,
-        ref_im, 
-        dark_im=0.0,
-        modes=(0,10),
-    )
-    ffo = get_ffo(**get_ffo_params)
+    ffo = get_ffo(**get_ffo_params) if get_ffo is not None else 0.0
     recon_coeff -= ffo
+    # print(recon_coeff)
     modal_coeff = - gains * recon_coeff
 
-    dm_command = xp.sum(modal_coeff[:, None, None] * dm_modes, axis=0)
+    del_dm_command = np.sum(modal_coeff[:, None, None] * dm_modes, axis=0)
 
-    set_dm_fun(dm_command, **set_dm_params)
+    total_dm_command = get_dm_fun(**get_dm_params) + del_dm_command
 
-def compute_without_fsm_ff_offset(
-        CAMLO_STREAM,
-        DM_STREAM,
-        LLOWFSC_REF_STREAM,
-        LLOWFSC_GAINS_STREAM,
-        OFFSET_STREAMS,
-        P, 
-        llowfsc_mask, 
-        dm_modes, 
-        dark_im,
-        leakage=0.0,
-    ):
-    camlo_im = (CAMLO_STREAM.grab_after(1, 0)[0] - dark_im)
-    camlo_im /= camlo_im[llowfsc_mask].sum()
-    del_im = camlo_im - LLOWFSC_REF_STREAM.grab_latest()
-    
-    recon_coeff = 1e6*P.dot(del_im[llowfsc_mask])
-    ff_offsets = np.sum([OFFSET_STREAM.grab_latest()[0] for OFFSET_STREAM in OFFSET_STREAMS], axis=0)
-    coeff_with_offset = recon_coeff - ff_offsets
-    modal_coeff = - LLOWFSC_GAINS_STREAM.grab_latest()[0] * coeff_with_offset[:]
+    set_dm_fun(total_dm_command, **set_dm_params)
 
-    del_dm_coeff = modal_coeff[:]
-    del_dm_command = np.sum( del_dm_coeff[:, None, None] * dm_modes, axis=0)
-    total_lo_dm = (1 - leakage) * DM_STREAM.grab_latest() + del_dm_command
-    DM_STREAM.write(total_lo_dm)
-
-    return
