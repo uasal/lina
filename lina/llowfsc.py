@@ -174,7 +174,7 @@ def run(
     )
     ffo = get_ffo(**get_ffo_params) if get_ffo is not None else 0.0
     recon_coeff -= ffo
-    # print(recon_coeff)
+
     modal_coeff = - gains * recon_coeff
 
     del_dm_command = np.sum(modal_coeff[:, None, None] * dm_modes, axis=0)
@@ -182,4 +182,19 @@ def run(
     total_dm_command = get_dm_fun(**get_dm_params) + del_dm_command
 
     set_dm_fun(total_dm_command, **set_dm_params)
+
+def compute_zpo(
+        DM_STREAMS,
+        dm_mask,
+        wfs_mask,
+        response_matrix,
+        dm_modal_matrix,
+        ZPO_STREAM,
+    ):
+    zpo = np.zeros((wfs_mask.shape[0], wfs_mask.shape[1]))
+    for i in range(len(DM_STREAMS)):
+        zpo[wfs_mask] += response_matrix.dot( dm_modal_matrix.dot(DM_STREAMS[i].grab_latest()[dm_mask]) )
+
+    ZPO_STREAM.write(zpo)
+    return zpo
 
