@@ -183,6 +183,17 @@ def run(
 
     set_dm_fun(total_dm_command, **set_dm_params)
 
+import threading
+class Process(threading.Timer):  
+    def run(self):
+        while not self.finished.wait(self.interval):  
+            self.function(*self.args, **self.kwargs)
+
+# process = Process(0.1, print, ['Repeating']) 
+# process.start()
+# time.sleep(2)
+# process.cancel()
+
 def compute_zpo(
         DM_STREAMS,
         dm_mask,
