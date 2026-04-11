@@ -22,6 +22,7 @@ def measure_probe_response(
         base_command=None,
         normalize_diff_fun=None,
         normalize_diff_params=None,
+        verbose=False,
         plot=False,
     ):
     """
@@ -62,6 +63,8 @@ def measure_probe_response(
     all_ims = []
     probed_responses = []
     for i in range(Nprobes):
+        if verbose:
+            print(f'\tMeasuring response of probe {i+1}/{Nprobes}.')
         probe = probe_amplitude * probe_modes[i]
 
         set_dm_fun(base_command + probe, **set_dm_params)
@@ -222,15 +225,22 @@ def make_response_matrix(
     response_matrix = response_cube[:, :, wfs_mask].reshape(Nmodes, -1).T
     return response_matrix
 
-def init_data():
-    efc_data = {
+def init_data(
+        wfs_mask=None, 
+        contrast0=None,
+        ni_im0=None,
+    ):
+    iefc_data = {
         'raw_images':[],
         'ni_images':[],
         'contrasts':[],
         'commands':[],
         'del_commands':[],
+        'wfs_mask':wfs_mask,
+        'ni_im0':ni_im0,
+        'contrast0':contrast0,
     }
-    return efc_data
+    return iefc_data
 
 def run(iefc_data,
         take_im_fun,
@@ -251,6 +261,7 @@ def run(iefc_data,
         normalize_metric_params=None,
         plot_current=True,
         plot_all=False,
+        verbose=True, 
         plot_probe_responses=False,
         vmin=1e-10,
         vmax=1e-5,
@@ -330,6 +341,7 @@ def run(iefc_data,
             base_command=total_command,
             normalize_diff_fun=normalize_diff_fun,
             normalize_diff_params=normalize_diff_params,
+            verbose=verbose,
             plot=plot_probe_responses,
         )
         measurement_vector = diff_ims[:, wfs_mask].ravel()
