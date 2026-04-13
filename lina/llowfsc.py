@@ -12,7 +12,7 @@ from matplotlib.colors import LogNorm, Normalize
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.gridspec import GridSpec
 
-def aqcuire_ref(
+def acquire_ref(
         take_im_fun,
         take_im_params,
         wfs_mask,
@@ -149,11 +149,12 @@ def run(
         set_dm_params,
         get_dm_fun,
         get_dm_params,
+        get_gains,
+        get_gains_params,
         ref_im,
         control_matrix,
         dm_modes,
         wfs_mask,
-        gains,
         dark_im=0.0,
         get_zpo=None,
         get_zpo_params={},
@@ -175,7 +176,7 @@ def run(
     ffo = get_ffo(**get_ffo_params) if get_ffo is not None else 0.0
     recon_coeff -= ffo
 
-    modal_coeff = - gains * recon_coeff
+    modal_coeff = - get_gains(**get_gains_params) * recon_coeff
 
     del_dm_command = np.sum(modal_coeff[:, None, None] * dm_modes, axis=0)
 
@@ -191,7 +192,6 @@ class Process(threading.Timer):
 
 # process = Process(0.1, print, ['Repeating']) 
 # process.start()
-# time.sleep(2)
 # process.cancel()
 
 def compute_zpo(
