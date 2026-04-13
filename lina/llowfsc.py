@@ -150,7 +150,7 @@ def run(
         get_dm_fun,
         get_dm_params,
         get_gains,
-        get_gains_params,
+        # get_gains_params,
         ref_im,
         control_matrix,
         dm_modes,
@@ -176,7 +176,7 @@ def run(
     ffo = get_ffo(**get_ffo_params) if get_ffo is not None else 0.0
     recon_coeff -= ffo
 
-    modal_coeff = - get_gains(**get_gains_params) * recon_coeff
+    modal_coeff = - get_gains() * recon_coeff
 
     del_dm_command = np.sum(modal_coeff[:, None, None] * dm_modes, axis=0)
 

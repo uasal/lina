@@ -150,6 +150,27 @@ def generate_freqs(
         return ensure_np_array(freqs), ensure_np_array(times)
     return freqs, times
 
+def generate_freqs(
+        delt = 0.1e-3,
+        tmax = 10.0,
+        verbose=False,
+    ):
+
+    fmax = 1/delt/2
+    delf = 1/(tmax + delt)
+    delf = 1/(tmax)
+    Nf = int(np.round(fmax/delf)) + 1
+
+    freqs = xp.linspace(0, fmax, Nf)
+
+    Nt = 2*(Nf-1)
+    times = xp.linspace(0, (Nt-1)*delt, Nt)
+
+    if verbose:
+        print(f'Generated frequency vector with sampling of {delf:.2e}Hz and maximum frequency of {freqs.max():.2e}Hz.')
+
+    return freqs, delf, times
+
 def roll_psd(
         freqs, 
         beta, 
@@ -171,43 +192,47 @@ def roll_psd(
 
 def generate_time_series(
         psd, 
-        f_max, 
+        freqs, 
         rms=None,  
         seed=123,
-        return_times=False,
         return_np=False,
+        verbose = False,
     ):
+    fmax = freqs.max()
+    delf = freqs[1] - freqs[0]
     Nfreq_samps = len(psd)
     Ntime_samps = 2 * (Nfreq_samps - 1)
-    del_time = 1/(2*f_max)
-    times = xp.linspace(0, (Ntime_samps-1)*del_time, Ntime_samps)
+    del_time = 1/(2*fmax)
+    times = xp.linspace(0, (Ntime_samps)*del_time, Ntime_samps)
 
-    P_fft_one_sided = copy.copy(psd)
+    P_one_sided = copy.copy(psd)
 
     # Because P includes both DC and Nyquist (N/2+1), P_fft must have 2*(N_P-1) elements
-    P_fft_one_sided[0] = 2 * P_fft_one_sided[0]
-    P_fft_one_sided[-1] = 2 * P_fft_one_sided[-1]
+    P_one_sided[0] = 2 * P_one_sided[0]
+    P_one_sided[-1] = 2 * P_one_sided[-1]
 
-    P_fft_new = xp.zeros((Ntime_samps,), dtype=complex)
-    P_fft_new[0:int(Ntime_samps/2)+1] = P_fft_one_sided
-    P_fft_new[int(Ntime_samps/2)+1:] = P_fft_one_sided[-2:0:-1]
+    P_two_sided = xp.zeros((Ntime_samps,), dtype=complex)
+    P_two_sided[0:int(Ntime_samps/2)+1] = P_one_sided
+    P_two_sided[int(Ntime_samps/2)+1:] = P_one_sided[-2:0:-1] # go from second to last element up to the first element backwards
 
     # Take the square root to get the amplitude of the power spectrum
-    amplitude_spectrum = xp.sqrt(P_fft_new)
+    amplitude_spectrum = xp.sqrt(P_two_sided) * Ntime_samps * xp.sqrt(delf/2)
 
     # Create random phases for all FFT terms other than DC and Nyquist
     xp.random.seed(xp.uint64(seed))
     phases = xp.random.uniform(0, 2*np.pi, (int(Ntime_samps/2),))
 
     # Ensure X_new has complex conjugate symmetry
-    amplitude_spectrum[1:int(Ntime_samps/2)+1] = amplitude_spectrum[1:int(Ntime_samps/2)+1] * np.exp(2j*phases)
-    amplitude_spectrum[int(Ntime_samps/2):] = amplitude_spectrum[int(Ntime_samps/2):] * np.exp(-2j*phases[::-1])
-    amplitude_spectrum = amplitude_spectrum * np.sqrt(Ntime_samps) / np.sqrt(2)
+    amplitude_spectrum[1:int(Ntime_samps/2)+1] = amplitude_spectrum[1:int(Ntime_samps/2)+1] * xp.exp(2j*phases)
+    amplitude_spectrum[int(Ntime_samps/2):] = amplitude_spectrum[int(Ntime_samps/2):] * xp.exp(-2j*phases[::-1])
 
-    # This is the new time series with a given PSD
-    time_series = xcipy.fft.ifft(amplitude_spectrum)
-    # print(x_new.real, x_new.imag)
+    time_series = xp.fft.ifft(amplitude_spectrum)
+    assert xp.sum(time_series.imag)<xp.sum(time_series.real)/1e12
     time_series = time_series.real
+
+    if verbose:
+        time_series_rms = xp.sqrt(xp.mean(xp.square(time_series)))
+        print(f'\tRMS of generated time series: {time_series_rms:.3e} RMS')
 
     if rms is not None: 
         time_series *= rms/np.sqrt(np.mean(np.square(time_series)))
@@ -215,11 +240,8 @@ def generate_time_series(
     if return_np:
         time_series = ensure_np_array(time_series)
         times = ensure_np_array(times)
-
-    if return_times:
-        return time_series, times
     
-    return time_series
+    return time_series, times
 
 def compute_cumulative_psd(freqs, psd):
     cumulative_psd = []

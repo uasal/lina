@@ -83,7 +83,11 @@ def calibrate(
 
     return jac
 
-def init_data():
+def init_data(
+        wfs_mask=None, 
+        contrast0=None,
+        ni_im0=None,
+    ):
     efc_data = {
         'raw_images':[],
         'ni_images':[],
@@ -91,6 +95,9 @@ def init_data():
         'contrasts':[],
         'commands':[],
         'del_commands':[],
+        'wfs_mask':wfs_mask,
+        'ni_im0':ni_im0,
+        'contrast0':contrast0,
     }
     return efc_data
 
