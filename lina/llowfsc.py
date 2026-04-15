@@ -184,16 +184,6 @@ def run(
 
     set_dm_fun(total_dm_command, **set_dm_params)
 
-import threading
-class Process(threading.Timer):  
-    def run(self):
-        while not self.finished.wait(self.interval):  
-            self.function(*self.args, **self.kwargs)
-
-# process = Process(0.1, print, ['Repeating']) 
-# process.start()
-# process.cancel()
-
 def compute_zpo(
         DM_STREAMS,
         dm_mask,
@@ -208,4 +198,49 @@ def compute_zpo(
 
     ZPO_STREAM.write(zpo)
     return zpo
+
+import multiprocessing
+import threading
+
+class ContinuousProcess():
+
+    def __init__(
+            self,
+            fun,
+            args=[],
+            kwargs={},
+            name='UNNAMED',
+        ):
+        
+        self.fun = fun
+        self.args = args
+        self.kwargs = kwargs
+        self.name = name
+
+        self.proc = multiprocessing.Process(target=self.continuous_fun)
+
+    def continuous_fun(self):
+        while True:
+            self.fun(*self.args, **self.kwargs)
+
+    def start(self):
+        self.proc.start()
+        print(f'{self.name} process started. PID = {self.proc.pid}',)
+
+    def stop(self):
+        self.proc.terminate()
+        print(f'{self.name} process terminated.')
+
+class TimedThread(threading.Timer):  
+    def run(self):
+        while not self.finished.wait(self.interval):  
+            self.function(*self.args, **self.kwargs)
+
+    def stop(self):
+        self.cancel()
+        print('Thread stopped.')
+
+# process = Process(0.1, print, ['Repeating']) 
+# process.start()
+# process.cancel()
 
