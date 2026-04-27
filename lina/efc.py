@@ -20,7 +20,7 @@ def calibrate(
         wfs_mask, 
         amp=1e-9, 
         current_command=None, 
-        plot_response_map=True,
+        plot_response_map=False,
     ):
     """
     This function computes a Jacobian for EFC using a model of the coronagraph. 

@@ -14,7 +14,11 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colors import LogNorm, Normalize, CenteredNorm
 from matplotlib.gridspec import GridSpec
 
-def init_data():
+def init_data(
+        wfs_mask=None, 
+        contrast0=None,
+        ni_im0=None,
+    ):
     aefc_data = {
         'raw_images':[],
         'ni_images':[],
@@ -24,6 +28,9 @@ def init_data():
         'del_commands':[],
         'bfgs_tols':[],
         'reg_conds':[],
+        'wfs_mask':wfs_mask,
+        'ni_im0':ni_im0,
+        'contrast0':contrast0,
     }
     return aefc_data
 

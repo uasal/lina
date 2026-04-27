@@ -44,7 +44,6 @@ if __name__ == "__main__":
     parser.add_argument('--zer_gain', type=float, default=0.3)
     parser.add_argument('--target_star_mag', type=float, default=5.0)
     parser.add_argument('--sim_duration', type=float, default=10)
-    # parser.add_argument('', type=, default=)
     parser.add_argument('--save_data', type=int, default=0)
     # parser.add_argument('', type=, default=)
 
