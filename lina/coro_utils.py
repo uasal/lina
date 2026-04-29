@@ -20,12 +20,31 @@ try:
 except ImportError:
     print('SCoOB interface does not have the required packages to operate.')
 
-def normalize_coro_im(raw_im, im_params, ref_params, dark_im=0.0):
-    exp_time_factor = ref_params['exp_time'] / im_params['exp_time'] if 'exp_time' in ref_params.keys() else 1.0
-    gain_factor = 10**(ref_params['gain']/20 * 0.1) / 10**(im_params['gain']/20 * 0.1) if 'gain' in ref_params.keys() else 1.0
-    fiber_atten_factor = 10**(-ref_params['atten']/10) / 10**(-im_params['atten']/10) if 'atten' in ref_params.keys() else 1.0
-    ds_im = (raw_im - dark_im) 
+def normalize_coro_im(raw_im, im_params, ref_params, dark_im=0.0, verbose=True):
+    # exp_time_factor = ref_params['exp_time'] / im_params['exp_time'] if 'exp_time' in ref_params.keys() else 1.0
+    # gain_factor = 10**(ref_params['gain']/20 * 0.1) / 10**(im_params['gain']/20 * 0.1) if 'gain' in ref_params.keys() else 1.0
+    # fiber_atten_factor = 10**(-ref_params['atten']/10) / 10**(-im_params['atten']/10) if 'atten' in ref_params.keys() else 1.0
+    if 'exp_time' in ref_params.keys() and 'exp_time' in im_params.keys():
+        exp_time_factor = ref_params['exp_time'] / im_params['exp_time']
+        if verbose: print(f'\tNormalization scale factor for exposure time = {exp_time_factor:.2e}')
+    else: 
+        exp_time_factor = 1.0
+
+    if 'gain' in ref_params.keys() and 'gain' in im_params.keys():
+        gain_factor = 10**(ref_params['gain']/20 * 0.1) / 10**(im_params['gain']/20 * 0.1)
+        if verbose: print(f'\tNormalization scale factor for camera gain = {gain_factor:.2e}')
+    else: 
+        gain_factor = 1.0
+
+    if 'gain' in ref_params.keys() and 'gain' in im_params.keys():
+        fiber_atten_factor = 10**(-ref_params['atten']/10) / 10**(-im_params['atten']/10)
+        if verbose: print(f'\tNormalization scale factor for camera gain = {fiber_atten_factor:.2e}')
+    else: 
+        fiber_atten_factor = 1.0
+
+    ds_im = raw_im - dark_im
     ni_im = ds_im * exp_time_factor * gain_factor * fiber_atten_factor / ref_params['Imax']
+
     return ni_im
 
 def compute_contrast(ni_im, mask, verbose=True):
@@ -35,7 +54,7 @@ def compute_contrast(ni_im, mask, verbose=True):
         Nmask = mask.sum()
         Npix_gtz = gtz_mask.sum()
         ratio = Npix_gtz / Nmask
-        print(f'Ratio of pixels greater than zero versus total pixels: {Npix_gtz} / {Nmask} = {ratio:.2f}')
+        print(f'\tRatio of pixels greater than zero versus total pixels: {Npix_gtz} / {Nmask} = {ratio:.2f}')
     ni_im_gtz = ni_im_masked[gtz_mask] # select values greater than zero
     contrast = np.mean(ni_im_gtz)
     return contrast

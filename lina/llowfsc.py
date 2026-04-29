@@ -140,6 +140,8 @@ def reconstruct(
 
     coeff = control_matrix[modes[0]:modes[1]].dot(del_im[wfs_mask])
 
+    if return_del_im:
+        return coeff, del_im
     return coeff
 
 def run(
