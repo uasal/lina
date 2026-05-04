@@ -158,7 +158,7 @@ def imshow(
         ax.set_ylabel(ylabel, fontsize=label_fz, labelpad=ylabel_pad)
         if xtick is not None: ax.set_xticks(xtick)
         if ytick is not None: ax.set_yticks(ytick)
-        if grid is not None: ax.grid()
+        if grid: ax.grid()
         if patches is not None: 
             for patch in patches:
                 ax.add_patch(patch)
