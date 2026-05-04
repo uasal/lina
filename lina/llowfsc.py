@@ -128,7 +128,6 @@ def reconstruct(
         wfs_mask,
         control_matrix,
         dark_im=0.0,
-        # which_modes='tt',
         modes=(0,10),
         flux_norm=True,
         return_del_im=False,
@@ -141,7 +140,7 @@ def reconstruct(
     coeff = control_matrix[modes[0]:modes[1]].dot(del_im[wfs_mask])
 
     if return_del_im:
-        return coeff, del_im
+        return coeff, del_im*wfs_mask
     return coeff
 
 def run(

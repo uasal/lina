@@ -38,7 +38,7 @@ def normalize_coro_im(raw_im, im_params, ref_params, dark_im=0.0, verbose=True):
 
     if 'gain' in ref_params.keys() and 'gain' in im_params.keys():
         fiber_atten_factor = 10**(-ref_params['atten']/10) / 10**(-im_params['atten']/10)
-        if verbose: print(f'\tNormalization scale factor for camera gain = {fiber_atten_factor:.2e}')
+        if verbose: print(f'\tNormalization scale factor for fiber attenuation = {fiber_atten_factor:.2e}')
     else: 
         fiber_atten_factor = 1.0
 
