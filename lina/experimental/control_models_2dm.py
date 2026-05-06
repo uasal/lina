@@ -468,6 +468,94 @@ def val_and_grad(
 
     return ensure_np_array(J), ensure_np_array(dJ_dA_vec)
 
+
+def val_and_grad_mw(
+        del_acts, 
+        M, 
+        rmad_vars,
+        verbose=False, 
+        plot=False,  
+        plot_all=False,
+    ):
+    # del_acts, M, actuators, E_ab, wfs_mask, wavelength, r_cond,
+    current_acts = xp.array(rmad_vars['current_acts'])
+    E_abs = xp.array(rmad_vars['E_abs'])
+    E_FP_NOMs = xp.array(rmad_vars['E_FP_NOMs'])
+    wfs_mask = xp.array(rmad_vars['wfs_mask'])
+    wfs_waves = rmad_vars['wfs_waves']
+    r_cond = rmad_vars['r_cond']
+    weights = rmad_vars['weights']
+
+    Nwaves = len(wfs_waves)
+
+    del_acts_waves = del_acts/M.wavelength_c
+
+    # current_acts = xp.array(rmad_vars['current_acts'])
+    # E_ab = xp.array(rmad_vars['E_ab'])
+    # E_FP_NOM = xp.array(rmad_vars['E_FP_NOM'])
+    # wfs_mask = xp.array(rmad_vars['wfs_mask'])
+    # wavelength = rmad_vars['wavelength']
+    # r_cond = rmad_vars['r_cond']
+
+    mono_rmad_vars = {
+        'current_acts':current_acts,
+        'wfs_mask':wfs_mask,
+        'r_cond':0,
+        # 'r_cond':r_cond,
+    }
+
+    J_monos = np.zeros(Nwaves)
+    dJ_dA_monos = np.zeros((Nwaves, 2*M.Nacts))
+    for i in range(Nwaves):
+        mono_rmad_vars.update({
+            'E_ab':E_abs[i],
+            'E_FP_NOM':E_FP_NOMs[i],
+            'wavelength':wfs_waves[i],
+        })
+
+        J_mono, dJ_dA_mono = val_and_grad(
+            del_acts, 
+            M, 
+            mono_rmad_vars,
+            verbose=verbose, 
+            plot=plot_all, 
+        )
+        
+        J_monos[i] = J_mono
+        dJ_dA_monos[i] = dJ_dA_mono
+
+        if plot:
+            dm1_grad = xp.zeros((M.Nact,M.Nact))
+            dm2_grad = xp.zeros((M.Nact,M.Nact))
+            dm1_grad[M.dm_mask] = dJ_dA_mono[:M.Nacts]
+            dm2_grad[M.dm_mask] = dJ_dA_mono[M.Nacts:]
+            utils.imshow(
+                [dm1_grad, dm2_grad]
+            )
+
+    # J_bb = np.sum(J_monos)/Nwaves + r_cond * del_acts_waves.dot(del_acts_waves)
+    # dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves + ensure_np_array( r_cond * 2*del_acts_waves )
+
+    # J_bb = np.sum(J_monos)/Nwaves
+    # dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves
+
+    # if weights is None: 
+    #     J_bb = np.sum(J_monos)/Nwaves
+    #     dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves
+    # else: 
+    #     J_bb = np.sum(weights * J_monos) / np.sum(weights)
+    #     dJ_dA_bb = np.sum(weights[:, None] * dJ_dA_monos, axis=0) / np.sum(weights)
+
+    if weights is None: 
+        J_bb = np.sum(J_monos)/Nwaves + r_cond * del_acts_waves.dot(del_acts_waves)
+        dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves + ensure_np_array( r_cond * 2*del_acts_waves )
+    else: 
+        J_bb = np.sum(weights * J_monos) / np.sum(weights) + r_cond * del_acts_waves.dot(del_acts_waves)
+        dJ_dA_bb = np.sum(weights[:, None] * dJ_dA_monos, axis=0) / np.sum(weights) + ensure_np_array( r_cond * 2*del_acts_waves )
+
+    
+    return J_bb, dJ_dA_bb
+
 def dm_val_and_grad(
         del_acts, 
         OPD,

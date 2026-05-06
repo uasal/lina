@@ -50,12 +50,14 @@ def run(
         val_and_grad,
         wfs_mask,
         dm_mask,
+        wfs_waves=None,
         reg_cond=1e-2,
         bfgs_tol=1e-3,
         bfgs_opts=None,
         num_iterations=3, 
         gain=1.0, 
-        leakage=0.0, 
+        leakage=0.0,
+        weights=None,  
         normalize_metric_fun=None,
         normalize_metric_params=None,
         verbose=False,
@@ -69,25 +71,44 @@ def run(
 
     starting_itr = len(aefc_data['ni_images']) + 1
     total_dm1_command, total_dm2_command = get_dm_fun(**get_dm_params)
+    
+    rmad_vars = {
+        'wfs_mask':wfs_mask,
+        'wfs_waves':wfs_waves,
+        'r_cond':reg_cond, 
+        'weights':weights,
+    }
 
     del_dm1_command = xp.zeros(dm_mask.shape) # array to fill with actuator solutions
     del_dm2_command = xp.zeros(dm_mask.shape)
     for i in range(num_iterations):
         print(f'Running iteration {starting_itr+i:d}')
 
-        E_ab = estimate_ef_fun(**estimate_ef_params)
+        # E_ab = estimate_ef_fun(**estimate_ef_params)
+
+        # current_acts = xp.concatenate([total_dm1_command[dm_mask], total_dm2_command[dm_mask]])
+        # E_FP_NOMs = M.forward(current_acts, M.wavelength_c, use_vortex=True, return_ints=False)
+
+        # rmad_vars= {
+        #     'E_ab': E_ab,
+        #     'current_acts': current_acts,
+        #     'E_FP_NOMs': E_FP_NOMs,
+        #     'wfs_mask': wfs_mask,
+        #     'wavelength':M.wavelength_c,
+        #     'r_cond': reg_cond, 
+        # }
+        
+        # For MW
+        E_abs = estimate_ef_fun(**estimate_ef_params)
 
         current_acts = xp.concatenate([total_dm1_command[dm_mask], total_dm2_command[dm_mask]])
-        E_FP_NOM = M.forward(current_acts, M.wavelength_c, use_vortex=True, return_ints=False)
+        E_FP_NOMs = M.forward_mw(current_acts, wfs_waves, use_vortex=True, return_ints=False)
 
-        rmad_vars= {
-            'E_ab': E_ab,
+        rmad_vars.update({
             'current_acts': current_acts,
-            'E_FP_NOM': E_FP_NOM,
-            'wfs_mask': wfs_mask,
-            'wavelength':M.wavelength_c,
-            'r_cond': reg_cond, 
-        }
+            'E_abs': E_abs,
+            'E_FP_NOMs': E_FP_NOMs,
+        })
 
         res = minimize(
             val_and_grad, 
@@ -116,7 +137,7 @@ def run(
         aefc_data['raw_images'].append(copy.copy(metric_im))
         aefc_data['ni_images'].append(copy.copy(metric_im_ni))
         aefc_data['contrasts'].append(contrast)
-        aefc_data['efields'].append(copy.copy(E_ab))
+        aefc_data['efields'].append(copy.copy(E_abs))
         aefc_data['dm1_commands'].append(copy.copy(total_dm1_command))
         aefc_data['del_dm1_commands'].append(copy.copy(del_dm1_command))
         aefc_data['dm2_commands'].append(copy.copy(total_dm2_command))
@@ -126,18 +147,6 @@ def run(
 
         if plot_current: 
             if not plot_all: clear_output(wait=True)
-            # utils.imshow(
-            #     [total_dm1_command, total_dm2_command, metric_im_ni], 
-            #     titles=[
-            #         # f'Iteration {starting_itr + i:d}: $\delta$DM', 
-            #         'Total DM1 Command', 
-            #         'Total DM2 Command', 
-            #         f'Normalized Image\nMean Contrast = {contrast:.3e}',
-            #     ],
-            #     cmaps=['viridis', 'viridis', 'magma'],
-            #     pxscls=[None, None, None],
-            #     norms=[CenteredNorm(), None, LogNorm(vmin=vmin)],
-            # )
             utils.imshow(
                 [del_dm1_command, total_dm1_command], 
                 titles=[

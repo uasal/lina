@@ -220,12 +220,14 @@ def measure_waffle_center_and_angle(
         im_thresh=1e-4, 
         r_thresh_min=12,
         r_thresh_max=18, 
+        xc=0,
+        yc=0,
         verbose=True, 
         plot=True,
     ):
     npsf = waffle_im.shape[0]
     y,x = (xp.indices((npsf, npsf)) - npsf//2)*psf_pixelscale_lamD
-    r = xp.sqrt(x**2 + y**2)
+    r = xp.sqrt((x - xc)**2 + (y - yc)**2)
     waffle_mask = (waffle_im > im_thresh) * (r>r_thresh_min) * (r<r_thresh_max)
 
     centroids = []
