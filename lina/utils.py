@@ -373,6 +373,7 @@ def create_annular_focal_plane_mask(
         x_shift=0,
         y_shift=0,
         return_np=False,
+        plot=False,
     ):
     if centering=='even':
         x = (xp.linspace(-npsf/2, npsf/2-1, npsf) + 1/2) * psf_pixelscale
@@ -387,18 +388,25 @@ def create_annular_focal_plane_mask(
     mask = xcipy.ndimage.shift(mask, (y_shift, x_shift), order=0)
     if return_np:
         return ensure_np_array(mask)
+    
+    if plot:
+        imshow(
+            [mask]
+        )
+    
     return mask
 
 def create_annular_mask(
         N, 
-        pixelscale, 
         irad, 
         orad,  
+        pixelscale=1, 
         edge=None,
         x_shift=0,
         y_shift=0,
         rotation=0,
         return_np=False,
+        plot=False,
     ):
     x = (xp.linspace(-N/2, N/2-1, N) + 1/2) * pixelscale
     x,y = xp.meshgrid(x,x)
@@ -410,6 +418,12 @@ def create_annular_mask(
     mask = xcipy.ndimage.shift(mask, (y_shift, x_shift), order=0)
     if return_np:
         return ensure_np_array(mask)
+    
+    if plot:
+        imshow(
+            [mask]
+        )
+
     return mask
 
 def get_radial_dist(shape, scaleyx=(1.0, 1.0), cenyx=None):

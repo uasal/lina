@@ -91,10 +91,10 @@ def create_fourier_modes(
     yf, xf = (xp.indices((nfg, nfg)) - nfg//2 + 1/2) * fourier_sampling
     # fourier_cm = utils.create_annular_focal_plane_mask(nfg, fourier_sampling, iwa-fourier_sampling, owa+fourier_sampling, edge=iwa-fourier_sampling, rotation=rotation)
     fourier_cm = utils.create_annular_mask(
-        nfg, 
-        fourier_sampling, 
+        nfg,  
         iwa-fourier_sampling, 
         owa+fourier_sampling, 
+        pixelscale=fourier_sampling,
         # edge=iwa-fourier_sampling, 
         edge=0,
         rotation=rotation,

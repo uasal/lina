@@ -236,6 +236,7 @@ def init_data(
         'contrasts':[],
         'commands':[],
         'del_commands':[],
+        'reg_conds':[],
         'wfs_mask':wfs_mask,
         'ni_im0':ni_im0,
         'contrast0':contrast0,
@@ -247,7 +248,9 @@ def run(iefc_data,
         take_im_params,
         set_dm_fun,
         set_dm_params,
-        control_matrix,
+        # control_matrix,
+        response_matrix,
+        reg_cond,
         probe_modes,
         probe_amplitude, 
         calib_modes,
@@ -328,6 +331,8 @@ def run(iefc_data,
 
     starting_itr = len(iefc_data['commands']) + 1
     total_command = copy.copy(iefc_data['commands'][-1]) if len(iefc_data['commands'])>0 else xp.zeros((Nact,Nact))
+    
+    control_matrix = utils.beta_reg(response_matrix, reg_cond)
 
     for i in range(num_iterations):
         print(f"Running iteration {i+starting_itr} / {num_iterations+starting_itr-1}")
@@ -362,6 +367,7 @@ def run(iefc_data,
         iefc_data['contrasts'].append(copy.copy(contrast))
         iefc_data['commands'].append(copy.copy(total_command))
         iefc_data['del_commands'].append(copy.copy(del_command))
+        iefc_data['reg_conds'].append(copy.copy(reg_cond))
     
         if plot_current: 
             if not plot_all: clear_output(wait=True)

@@ -36,14 +36,57 @@ def normalize_coro_im(raw_im, im_params, ref_params, dark_im=0.0, verbose=True):
     else: 
         gain_factor = 1.0
 
-    if 'gain' in ref_params.keys() and 'gain' in im_params.keys():
+    if 'atten' in ref_params.keys() and 'atten' in im_params.keys():
         fiber_atten_factor = 10**(-ref_params['atten']/10) / 10**(-im_params['atten']/10)
         if verbose: print(f'\tNormalization scale factor for fiber attenuation = {fiber_atten_factor:.2e}')
     else: 
         fiber_atten_factor = 1.0
 
+    if 'laser_power' in ref_params.keys() and 'laser_power' in im_params.keys():
+        laser_power_factor = ref_params['laser_power'] / im_params['laser_power']
+        if verbose: print(f'\tNormalization scale factor for laser power = {laser_power_factor:.2e}')
+    else:
+        laser_power_factor = 1.0
+
     ds_im = raw_im - dark_im
-    ni_im = ds_im * exp_time_factor * gain_factor * fiber_atten_factor / ref_params['Imax']
+    ni_im = ds_im * exp_time_factor * gain_factor * fiber_atten_factor * laser_power_factor / ref_params['Imax']
+
+    return ni_im
+
+def normalize_coro_im_with_dm_spots(raw_im, im_params, ref_params, dark_im=0.0, verbose=True):
+
+    if 'exp_time' in ref_params.keys() and 'exp_time' in im_params.keys():
+        exp_time_factor = ref_params['exp_time'] / im_params['exp_time']
+        if verbose: print(f'\tNormalization scale factor for exposure time = {exp_time_factor:.2e}')
+    else: 
+        exp_time_factor = 1.0
+
+    if 'gain' in ref_params.keys() and 'gain' in im_params.keys():
+        gain_factor = 10**(ref_params['gain']/20 * 0.1) / 10**(im_params['gain']/20 * 0.1)
+        if verbose: print(f'\tNormalization scale factor for camera gain = {gain_factor:.2e}')
+    else: 
+        gain_factor = 1.0
+
+    if 'atten' in ref_params.keys() and 'atten' in im_params.keys():
+        fiber_atten_factor = 10**(-ref_params['atten']/10) / 10**(-im_params['atten']/10)
+        if verbose: print(f'\tNormalization scale factor for fiber attenuation = {fiber_atten_factor:.2e}')
+    else: 
+        fiber_atten_factor = 1.0
+
+    if 'laser_power' in ref_params.keys() and 'laser_power' in im_params.keys():
+        laser_power_factor = ref_params['laser_power'] / im_params['laser_power']
+        if verbose: print(f'\tNormalization scale factor for laser power = {laser_power_factor:.2e}')
+    else:
+        laser_power_factor = 1.0
+
+    dm_spot_scale_factor = ref_params['flux_dm_spot_sat_psf'] / ref_params['flux_dm_spot_unsat_psf']
+    Imax_true = ref_params['Imax_unsat_psf'] * dm_spot_scale_factor
+    if verbose:
+        print(f'\tScale factor for Imax based on DM satelite spots is {dm_spot_scale_factor:.2e}')
+        print(f'\tImax scaled to {Imax_true:.2e}')
+
+    ds_im = raw_im - dark_im
+    ni_im = ds_im * exp_time_factor * gain_factor * fiber_atten_factor * laser_power_factor / Imax_true
 
     return ni_im
 
@@ -201,6 +244,73 @@ def get_im_params(client, cam_name, verbose=True):
             f'Image parameters: \n\tExposure time = {im_params["exp_time"]:.2e} s \n\tGain = {im_params["gain"]:.0f} \n\tFiber attenuation = {im_params["atten"]:.1f}'
         )
     return im_params
+
+from pylablib.devices import NKT
+import numpy as np
+
+class Laser(object):
+   
+    varia = 16
+    compact = 1
+   
+    def __init__(self, addr='/dev/ttyUSB2'):
+        self.addr = addr
+        self.device = self.connect()
+    
+    def connect(self):
+        return NKT.GenericInterbusDevice(self.addr)
+    
+    def close(self):
+        self.device.close()
+   
+    def get_wavelength_min(self):
+        return self.device.ib_get_reg(self.varia, 0x34, 'u16') / 10 # nm
+   
+    def set_wavelength_min(self, wavelen):
+        """
+        wavelen given in nm
+        """
+        self.device.ib_set_reg(self.varia, 0x34, int(np.rint(wavelen)*10), 'u16')
+
+    def get_wavelength_max(self):
+        return self.device.ib_get_reg(self.varia, 0x33, 'u16') / 10 # nm
+   
+    def set_wavelength_max(self, wavelen):
+        """
+        wavelen given in nm
+        """
+        self.device.ib_set_reg(self.varia, 0x33, int(np.rint(wavelen*10)), 'u16')
+
+    def get_varia_nd(self):
+        return self.device.ib_get_reg(self.varia, 0x32, 'u16') / 10 # %
+    
+    def set_varia_nd(self, percent):
+        self.device.ib_set_reg(self.varia, 0x32, int(np.rint(percent*10)), 'u16')
+
+    def emission_on(self):
+        self.device.ib_set_reg(self.compact, 0x30, 1, 'u8')
+
+    def emission_off(self):
+        self.device.ib_set_reg(self.compact, 0x30, 0, 'u8')
+
+    def get_power_level(self):
+        return self.device.ib_get_reg(self.compact, 0x3E, 'u8') # %
+    
+    def set_power_level(self, percent):
+        self.device.ib_set_reg(self.compact, 0x3E, int(percent), 'u8') # %
+
+    def set_central_wave_bandwidth(self, central_wave, bw):
+        """
+        Lightweight wrapper around set_wavelength_min/max:
+
+        Set the central wavelength and fractional bandwidth on the
+        laser device
+        """
+
+        wave_min = central_wave * (1-bw*0.5)
+        wave_max = central_wave * (1+bw*0.5)
+        self.set_wavelength_min(wave_min)
+        self.set_wavelength_max(wave_max)
 
 def set_dm(STREAM, command, delay=0.05):
     STREAM.write(1e6*command)
