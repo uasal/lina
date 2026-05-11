@@ -245,8 +245,10 @@ def get_im_params(client, cam_name, verbose=True):
         )
     return im_params
 
-from pylablib.devices import NKT
-import numpy as np
+try:
+    from pylablib.devices import NKT
+except ImportError:
+    print('Could not import pylablib. NKT laser functionality not available.')
 
 class Laser(object):
    
