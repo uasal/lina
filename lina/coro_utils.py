@@ -245,6 +245,98 @@ def get_im_params(client, cam_name, verbose=True):
         )
     return im_params
 
+def set_nsv_sliced(client, delay=0.5,):
+    # update roi parameters
+    client.wait_for_properties([
+        'camnsv.mode',
+    ])
+    
+    client['camnsv.mode.sliced'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+def set_nsv_sliced_roi(client, xc=None, yc=None, npix=None, vcrop_offset=None, delay=0.5,):
+    # update roi parameters
+    client.wait_for_properties([
+        'camnsv.mode',
+        'camnsv.roi_region_h' ,'camnsv.roi_region_w',
+        'camnsv.roi_region_x', 'camnsv.roi_region_y', 
+        'camnsv.vcropoffset',
+        'camnsv.roi_set',
+    ])
+    
+    client['camnsv.mode.sliced'] = purepyindi.SwitchState.ON
+    time.sleep(0.5)
+    if vcrop_offset is not None: 
+        client['camnsv.vcropoffset.target'] = vcrop_offset
+    if npix is not None:
+        client['camnsv.roi_region_h.target'] = npix
+        client['camnsv.roi_region_w.target'] = npix
+    if xc is not None: 
+        client['camnsv.roi_region_x.target'] = xc
+    if yc is not None: 
+        client['camnsv.roi_region_y.target'] = yc
+    time.sleep(0.25)
+    client['camnsv.roi_set.request'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+def set_nsv_fullframe(client, delay=0.5,):
+    # update roi parameters
+    client.wait_for_properties([
+        'camnsv.mode',
+        'camnsv.roi_set_full'
+    ])
+    
+    client['camnsv.mode.fullframe'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+    client['camnsv.roi_set_full.request'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+def set_nsv_fullframe_roi(client, xc=None, yc=None, npix=None, delay=0.5,):
+    # update roi parameters
+    client.wait_for_properties([
+        'camnsv.mode',
+        'camnsv.roi_region_h' ,'camnsv.roi_region_w',
+        'camnsv.roi_region_x', 'camnsv.roi_region_y', 
+        'camnsv.roi_set',
+    ])
+    
+    client['camnsv.mode.fullframe'] = purepyindi.SwitchState.ON
+    time.sleep(0.5)
+    if npix is not None:
+        client['camnsv.roi_region_h.target'] = npix
+        client['camnsv.roi_region_w.target'] = npix
+    if xc is not None: 
+        client['camnsv.roi_region_x.target'] = xc
+    if yc is not None: 
+        client['camnsv.roi_region_y.target'] = yc
+    time.sleep(0.25)
+    client['camnsv.roi_set.request'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+def set_nsv455_roi(client, mode=None, xc=None, yc=None, npix=None, delay=0.5,):
+    # update roi parameters
+    client.wait_for_properties([
+        'nsv455.mode',
+        'nsv455.roi_region_h', 'nsv455.roi_region_w',
+        'nsv455.roi_region_x', 'nsv455.roi_region_y', 
+        'nsv455.roi_set',
+    ])
+    
+    if mode is not None:
+        client[f'nsv455.mode.{mode}x{mode}'] = purepyindi.SwitchState.ON
+        time.sleep(10)
+    if npix is not None:
+        client['nsv455.roi_region_h.target'] = npix
+        client['nsv455.roi_region_w.target'] = npix
+    if xc is not None: 
+        client['nsv455.roi_region_x.target'] = xc
+    if yc is not None: 
+        client['nsv455.roi_region_y.target'] = yc
+    time.sleep(0.25)
+    client['nsv455.roi_set.request'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
 try:
     from pylablib.devices import NKT
 except ImportError:
