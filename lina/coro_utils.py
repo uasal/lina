@@ -314,7 +314,14 @@ def set_nsv_fullframe_roi(client, xc=None, yc=None, npix=None, delay=0.5,):
     client['camnsv.roi_set.request'] = purepyindi.SwitchState.ON
     time.sleep(delay)
 
-def set_nsv455_roi(client, mode=None, xc=None, yc=None, npix=None, delay=0.5,):
+def set_nsv455_roi(
+        client, 
+        mode=None, 
+        xc=None, 
+        yc=None, 
+        npix=None, 
+        delay=0.5,
+    ):
     # update roi parameters
     client.wait_for_properties([
         'nsv455.mode',
@@ -324,7 +331,7 @@ def set_nsv455_roi(client, mode=None, xc=None, yc=None, npix=None, delay=0.5,):
     ])
     
     if mode is not None:
-        client[f'nsv455.mode.{mode}x{mode}'] = purepyindi.SwitchState.ON
+        client[f'nsv455.mode.{mode}'] = purepyindi.SwitchState.ON
         time.sleep(10)
     if npix is not None:
         client['nsv455.roi_region_h.target'] = npix
@@ -335,6 +342,19 @@ def set_nsv455_roi(client, mode=None, xc=None, yc=None, npix=None, delay=0.5,):
         client['nsv455.roi_region_y.target'] = yc
     time.sleep(0.25)
     client['nsv455.roi_set.request'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+def set_nsv455_fps(
+        client, 
+        fps,
+        delay=0.5,
+    ):
+    # update roi parameters
+    client.wait_for_properties([
+        'nsv455.fps',
+    ])
+    
+    client['nsv455.fps.target'] = fps
     time.sleep(delay)
 
 try:
