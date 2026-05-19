@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import copy
 
-def fft(arr):
+def fft(arr, sync=False):
     """
     Compute the 2D Fourier Transform of an array with proper FFT shifts applied for the DC component. 
 
@@ -21,7 +21,12 @@ def fft(arr):
         ndarray:
             The Fourier Transform of the input array.  
     """
-    return xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(arr)))
+    out = xp.fft.ifftshift(xp.fft.fft2(xp.fft.fftshift(arr)))
+    
+    if sync:
+        xp.cuda.Device().synchronize()
+
+    return out
     # return xp.fft.ifftshift(xp.fft.fft2(arr))
 
 def ifft(arr):
@@ -148,6 +153,7 @@ def mft_forward(
         convention='-', 
         pp_centering='odd', 
         fp_centering='odd',
+        sync=False,
     ):
     """
     Generate the matrices required to perform a forward Matrix Fourier Transform. 
@@ -212,7 +218,12 @@ def mft_forward(
         fp_centering=fp_centering,
     )
 
-    return Mx@wavefront@My * norm_coeff
+    out = Mx@wavefront@My * norm_coeff
+
+    if sync: 
+        xp.cuda.Device().synchronize()
+
+    return out
 
 def make_mft_reverse_matrices(
         npsf, 

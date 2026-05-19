@@ -47,6 +47,25 @@ def pad_or_crop( arr_in, npix):
         arr_out[x1:x2,x1:x2] = arr_in
     return arr_out
 
+def nearest_power_of_2(n):
+    if n <= 0: return 1
+    # Find the exponents for the powers of 2 below and above n
+    low = 2 ** np.floor(np.log2(n))
+    high = 2 ** np.ceil(np.log2(n))
+    
+    # Return the one with the smallest difference
+    val = int(low) if (n - low) < (high - n) else int(high)
+    return val
+
+def get_sum_of_powers_of_2(val, return_all=False):
+    np2 = nearest_power_of_2(val)
+    remainder = val - np2
+    np2_gtr = 2 ** int(np.ceil(np.log2(remainder + 0.1)))
+    total = np2 + np2_gtr
+    if return_all:
+        return total, np2, np2_gtr
+    return total
+
 def imshow(
         arrs,
         titles=[], 

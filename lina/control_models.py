@@ -104,7 +104,8 @@ class MODEL():
             coupling=act_coupling, 
             Nact=self.Nact+2,
         )
-        self.Nsurf = self.inf_fun.shape[0]
+        self.Nsurf = utils.get_sum_of_powers_of_2(self.inf_fun.shape[0]) # get next value that is a sum of powers of 2
+        self.inf_fun = utils.pad_or_crop(self.inf_fun, self.Nsurf) # pad to the correct shape
 
         # construct DM mask
         y,x = (xp.indices((self.Nact, self.Nact)) - self.Nact//2 + 1/2)
@@ -166,6 +167,7 @@ class MODEL():
             use_vortex=True, 
             return_ints=False, 
             plot=False,
+            sync=False,
         ):
 
         if wavelength is None: wavelength = self.wavelength_c
@@ -232,6 +234,9 @@ class MODEL():
         E_FP = props.mft_forward(E_FFFP, self.npix * self.lyot_ratio, self.ncamsci, camsci_pxscl_lamD)
         E_FP = xcipy.ndimage.rotate(E_FP, self.camsci_rotation, reshape=False, order=3)
 
+        if sync: 
+            xp.cuda.Device().synchronize()
+
         if use_vortex and plot: 
             utils.imshow(
                 [xp.abs(E_EP), xp.angle(E_EP),
@@ -296,7 +301,8 @@ def val_and_grad(
         M, 
         rmad_vars, 
         verbose=False, 
-        plot=False, 
+        plot=False,
+        sync=False, 
     ):
     # Convert array arguments into correct types
     del_acts = xp.array(del_acts)
@@ -379,6 +385,9 @@ def val_and_grad(
     dJ_dA = M.Mx_dm_back@x1_bar@M.My_dm_back / ( M.Nsurf * M.Nact * M.Nact ) # why I have to divide by this constant is beyond me
 
     dJ_dA_vec = dJ_dA[M.dm_mask].real + xp.array( r_cond * 2*del_acts_waves )
+
+    if sync:
+        xp.cuda.Device().synchronize()
 
     if plot: 
         utils.imshow(
