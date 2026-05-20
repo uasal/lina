@@ -206,11 +206,11 @@ def set_cam_roi(xc, yc, npix, client, cam_name='camsci', bin_mode=2, delay=0.25)
     time.sleep(delay)
     print(f'Set {cam_name} ROI.')
 
-def set_cam_exp_time(exp_time, client, cam_name='camsci', delay=0.25):
+def set_cam_exp_time(exp_time, client, cam_name='camsci', delay=0.25, verbose=True):
     client.wait_for_properties([f'{cam_name}.exptime'])
     client[f'{cam_name}.exptime.target'] = exp_time
     time.sleep(delay)
-    print(f'Set the {cam_name} exposure time to {exp_time:.2e}s')
+    if verbose: print(f'Set the {cam_name} exposure time to {exp_time:.2e}s')
 
 def get_cam_exp_time(client, cam_name):
     client.wait_for_properties([f'{cam_name}.exptime'])
