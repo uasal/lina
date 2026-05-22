@@ -54,7 +54,7 @@ def grad_GIE(I, D):
 
 class ADPR:
     def __init__(self, wvls, pupil, dx_pupil, psf, dx_psf, efl, modes, 
-                 defocus_coeff, initial_opd=None, error_fx='GIE'):
+                 defocus_coeff, initial_opd=None, error_fx='GIE', zonal=False):
         
         """A class for performing phase retrieval using algorithmic differentiation on a single PSF. 
         Not terribly useful on its own, but several of these can be fed to as a list to the FDPR or FFPR
@@ -87,6 +87,7 @@ class ADPR:
         self.dx_psf = dx_psf
         self.error_fx = error_fx.upper()
         self.costs = []
+        self.zonal = zonal
 
         if initial_opd is None:
             self.init_opd = np.zeros(pupil.shape, dtype=float)
@@ -118,7 +119,13 @@ class ADPR:
         
         # calculate OPD at the pupil using the initial OPD guess, the 
         # modal basis and the modal coefficients
-        self.opd = self.init_opd + sum_of_2d_modes(self.modes, np.array(x))
+        if self.zonal:
+            self.opd = self.init_opd + np.array(x).reshape(self.pup.shape)
+        else:
+            if len(self.modes) == 1:
+                self.opd = self.init_opd + (np.array(self.modes) * np.array(x)).reshape(self.pup.shape)
+            else:
+                self.opd = self.init_opd + sum_of_2d_modes(self.modes, np.array(x))
 
         # initialize: 
         # per-wavelength W: the pupil phase
@@ -192,9 +199,15 @@ class ADPR:
             self.Wbar += (2 * np.pi / wvl) * np.imag(gbar * np.conj(g)) / 1e3
 
         # calculate the modal coefficient gradient with respect to the pupil phase gradient
-        self.abar = np.tensordot(self.modes, self.Wbar)
+        if len(self.modes) == 1:
+            self.abar = np.tensordot(np.array(self.modes), self.Wbar)
+        else:
+            self.abar = np.tensordot(self.modes, self.Wbar)
 
-        return self.abar
+        if self.zonal:
+            return self.Wbar.ravel()
+        else:
+            return self.abar
     
     def fg(self, x):
 
