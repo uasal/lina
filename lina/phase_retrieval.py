@@ -39,22 +39,39 @@ def grad_MSE(I, D):
     return 2 * (I - D)
 
 
-def GIE(I, D):
-    t1 = np.sum(I * D) ** 2
-    t2 = np.sum(D ** 2) 
-    t3 = np.sum(I ** 2)
-    return 1 - t1 / (t2 * t3)
+def GIE(I, D, mask=None):
+    if mask is None:
+        t1 = np.sum(I * D) ** 2
+        t2 = np.sum(D ** 2)
+        t3 = np.sum(I ** 2)
+        return 1 - t1 / (t2 * t3)
+
+    # convert mask to numeric values
+    m = mask.astype(I.dtype)
+    t1 = np.sum(I * D * m) ** 2
+    t2 = np.sum(D ** 2 * m)
+    t3 = np.sum(I ** 2 * m)
+    return (1 - t1 / (t2 * t3)) * m
 
 
-def grad_GIE(I, D):
-    t1 = np.sum(I * D)
-    t2 = np.sum(D ** 2)
-    t3 = np.sum(I ** 2)
-    return 2 * t1 / (t2 * t3 ** 2) * (I * t1 - D * t3)
+def grad_GIE(I, D, mask=None):
+    if mask == None:
+        t1 = np.sum(I * D)
+        t2 = np.sum(D ** 2)
+        t3 = np.sum(I ** 2)
+        return 2 * t1 / (t2 * t3 ** 2) * (I * t1 - D * t3)
+
+    # convert mask to numeric values
+    m = mask.astype(I.dtype)
+    t1 = np.sum(I * D * m)
+    t2 = np.sum(D ** 2 * m)
+    t3 = np.sum(I ** 2 * m)
+    return (2 * t1 / (t2 * t3 ** 2) * (I * t1 - D * t3)) * m
+
 
 class ADPR:
     def __init__(self, wvls, pupil, dx_pupil, psf, dx_psf, efl, modes, 
-                 defocus_coeff, initial_opd=None, error_fx='GIE', zonal=False):
+                 defocus_coeff, initial_opd=None, error_fx='GIE', zonal=False, mask=None):
         
         """A class for performing phase retrieval using algorithmic differentiation on a single PSF. 
         Not terribly useful on its own, but several of these can be fed to as a list to the FDPR or FFPR
@@ -88,6 +105,7 @@ class ADPR:
         self.error_fx = error_fx.upper()
         self.costs = []
         self.zonal = zonal
+        self.mask = mask
 
         if initial_opd is None:
             self.init_opd = np.zeros(pupil.shape, dtype=float)
@@ -159,7 +177,7 @@ class ADPR:
             self.I += np.abs(G) ** 2 / len(self.wvls)
 
         # calculate the error between the estimated PSF and the ground-truth PSF
-        self.E = self.err(self.I, self.psf)
+        self.E = self.err(self.I, self.psf, self.mask)
 
         self.costs.append(self.E)
 
@@ -181,7 +199,7 @@ class ADPR:
         for wvl, G, g in zip(self.wvls, self.Gs, self.gs):
             
             # calculate the focal-plane intensity gradient with respect to error
-            Ibar = self.grad_err(self.I, self.psf) / len(self.wvls)
+            Ibar = self.grad_err(self.I, self.psf, self.mask) / len(self.wvls)
             self.Ibars.append(Ibar)
 
             # calculate the focal-plane complex wavefront gradient with respect to the focal-plane intensity gradient
