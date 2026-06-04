@@ -9,6 +9,7 @@ import shutil
 import stat
 import time
 import threading
+import pwd, grp
 
 try:
     import magpyx
