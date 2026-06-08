@@ -9,6 +9,7 @@ import pickle
 import os
 import shutil
 import glob
+import skimage
 
 import matplotlib.pyplot as plt
 plt.rcParams['image.origin'] = 'lower'
@@ -314,7 +315,6 @@ def create_zernike_modes(pupil_mask, nmodes=15, remove_modes=0, return_np=False)
     
     return zernikes
 
-
 def lstsq(modes, data):
     """Least-Squares fit of modes to data.
 
@@ -480,7 +480,31 @@ def plot_radial_contrast(im, mask, pixelscale, nbins=30, cenyx=None, xlims=None,
     plt.close()
     display(fig)
     
+def centroid(
+        im,
+        thresh=None, 
+        plot=True,
+    ):
 
+    im_mask = im > thresh if thresh is not None else np.ones_like(im)
+
+    masked_im = im*im_mask
+
+    cen = skimage.measure.centroid(masked_im)
+    cen = np.flip(cen)
+
+    if plot:
+        imshow(
+            [im, im_mask, masked_im],
+            norms=[LogNorm(), None, LogNorm()],
+            all_patches=[
+                [Circle((cen[0], cen[1]), im.shape[0]/120, fill=True, color='cyan')],
+                None, 
+                [Circle((cen[0], cen[1]), im.shape[0]/120, fill=True, color='cyan')],
+            ],
+        )
+
+    return cen
 
 
 

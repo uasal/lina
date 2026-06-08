@@ -20,6 +20,11 @@ try:
 except ImportError:
     print('SCoOB interface does not have the required packages to operate.')
 
+try:
+    from pylablib.devices import NKT
+except ImportError:
+    print('Could not import pylablib. NKT laser functionality not available.')
+
 def normalize_coro_im(raw_im, im_params, ref_params, dark_im=0.0, verbose=True):
     # exp_time_factor = ref_params['exp_time'] / im_params['exp_time'] if 'exp_time' in ref_params.keys() else 1.0
     # gain_factor = 10**(ref_params['gain']/20 * 0.1) / 10**(im_params['gain']/20 * 0.1) if 'gain' in ref_params.keys() else 1.0
@@ -357,12 +362,7 @@ def set_nsv455_fps(
     client['nsv455.fps.target'] = fps
     time.sleep(delay)
 
-try:
-    from pylablib.devices import NKT
-except ImportError:
-    print('Could not import pylablib. NKT laser functionality not available.')
-
-class Laser(object):
+class NKTLaser(object):
    
     varia = 16
     compact = 1
@@ -425,18 +425,6 @@ class Laser(object):
         wave_max = central_wave * (1+bw*0.5)
         self.set_wavelength_min(wave_min)
         self.set_wavelength_max(wave_max)
-
-def set_dm(STREAM, command, delay=0.05):
-    STREAM.write(1e6*command)
-    time.sleep(delay)
-
-def add_dm(STREAM, command, delay=0.05):
-    STREAM.write(STREAM.grab_latest() + 1e6*command)
-    time.sleep(delay)
-
-def zero_dm(STREAM, delay=0.05):
-    STREAM.write(np.zeros(STREAM.shape))
-    time.sleep(delay)
 
 def measure_waffle_center_and_angle(
         waffle_im, 
@@ -520,3 +508,5 @@ def measure_waffle_center_and_angle(
         )
     
     return xshift, yshift, mean_angle
+
+
