@@ -45,6 +45,7 @@ def calibrate_dm_modes(
         flux_norm_coeff=None,
         include_factor_2=False,
         plot=False,
+        npix=None,
     ):
     
     Nmask = int(wfs_mask.sum())
@@ -79,6 +80,7 @@ def calibrate_dm_modes(
                 [dm_mode, im_pos, diff], 
                 titles=[f'Mode {i+1}', 'Positive Chop Image', 'Difference'], 
                 cmaps=['viridis'],
+                npix=[None, npix, npix]
             )
         else:
             print(f"\tCalibrated mode {i+1:d}/{Nmodes:d} in {time.time()-start:.3f}s", end='')
