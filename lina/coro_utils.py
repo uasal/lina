@@ -1,5 +1,5 @@
 from .math_module import xp, xcipy, ensure_np_array
-from lina import utils, shmim_utils
+from lina import rt_utils, utils
 
 import numpy as np
 import scipy
@@ -20,12 +20,74 @@ try:
 except ImportError:
     print('SCoOB interface does not have the required packages to operate.')
 
-def normalize_coro_im(raw_im, im_params, ref_params, dark_im=0.0):
-    exp_time_factor = ref_params['exp_time'] / im_params['exp_time'] if 'exp_time' in ref_params.keys() else 1.0
-    gain_factor = 10**(ref_params['gain']/20 * 0.1) / 10**(im_params['gain']/20 * 0.1) if 'gain' in ref_params.keys() else 1.0
-    fiber_atten_factor = 10**(-ref_params['atten']/10) / 10**(-im_params['atten']/10) if 'atten' in ref_params.keys() else 1.0
-    ds_im = (raw_im - dark_im) 
-    ni_im = ds_im * exp_time_factor * gain_factor * fiber_atten_factor / ref_params['Imax']
+def normalize_coro_im(raw_im, im_params, ref_params, dark_im=0.0, verbose=True):
+    # exp_time_factor = ref_params['exp_time'] / im_params['exp_time'] if 'exp_time' in ref_params.keys() else 1.0
+    # gain_factor = 10**(ref_params['gain']/20 * 0.1) / 10**(im_params['gain']/20 * 0.1) if 'gain' in ref_params.keys() else 1.0
+    # fiber_atten_factor = 10**(-ref_params['atten']/10) / 10**(-im_params['atten']/10) if 'atten' in ref_params.keys() else 1.0
+    if 'exp_time' in ref_params.keys() and 'exp_time' in im_params.keys():
+        exp_time_factor = ref_params['exp_time'] / im_params['exp_time']
+        if verbose: print(f'\tNormalization scale factor for exposure time = {exp_time_factor:.2e}')
+    else: 
+        exp_time_factor = 1.0
+
+    if 'gain' in ref_params.keys() and 'gain' in im_params.keys():
+        gain_factor = 10**(ref_params['gain']/20 * 0.1) / 10**(im_params['gain']/20 * 0.1)
+        if verbose: print(f'\tNormalization scale factor for camera gain = {gain_factor:.2e}')
+    else: 
+        gain_factor = 1.0
+
+    if 'atten' in ref_params.keys() and 'atten' in im_params.keys():
+        fiber_atten_factor = 10**(-ref_params['atten']/10) / 10**(-im_params['atten']/10)
+        if verbose: print(f'\tNormalization scale factor for fiber attenuation = {fiber_atten_factor:.2e}')
+    else: 
+        fiber_atten_factor = 1.0
+
+    if 'laser_power' in ref_params.keys() and 'laser_power' in im_params.keys():
+        laser_power_factor = ref_params['laser_power'] / im_params['laser_power']
+        if verbose: print(f'\tNormalization scale factor for laser power = {laser_power_factor:.2e}')
+    else:
+        laser_power_factor = 1.0
+
+    ds_im = raw_im - dark_im
+    ni_im = ds_im * exp_time_factor * gain_factor * fiber_atten_factor * laser_power_factor / ref_params['Imax']
+
+    return ni_im
+
+def normalize_coro_im_with_dm_spots(raw_im, im_params, ref_params, dark_im=0.0, verbose=True):
+
+    if 'exp_time' in ref_params.keys() and 'exp_time' in im_params.keys():
+        exp_time_factor = ref_params['exp_time'] / im_params['exp_time']
+        if verbose: print(f'\tNormalization scale factor for exposure time = {exp_time_factor:.2e}')
+    else: 
+        exp_time_factor = 1.0
+
+    if 'gain' in ref_params.keys() and 'gain' in im_params.keys():
+        gain_factor = 10**(ref_params['gain']/20 * 0.1) / 10**(im_params['gain']/20 * 0.1)
+        if verbose: print(f'\tNormalization scale factor for camera gain = {gain_factor:.2e}')
+    else: 
+        gain_factor = 1.0
+
+    if 'atten' in ref_params.keys() and 'atten' in im_params.keys():
+        fiber_atten_factor = 10**(-ref_params['atten']/10) / 10**(-im_params['atten']/10)
+        if verbose: print(f'\tNormalization scale factor for fiber attenuation = {fiber_atten_factor:.2e}')
+    else: 
+        fiber_atten_factor = 1.0
+
+    if 'laser_power' in ref_params.keys() and 'laser_power' in im_params.keys():
+        laser_power_factor = ref_params['laser_power'] / im_params['laser_power']
+        if verbose: print(f'\tNormalization scale factor for laser power = {laser_power_factor:.2e}')
+    else:
+        laser_power_factor = 1.0
+
+    dm_spot_scale_factor = ref_params['flux_dm_spot_sat_psf'] / ref_params['flux_dm_spot_unsat_psf']
+    Imax_true = ref_params['Imax_unsat_psf'] * dm_spot_scale_factor
+    if verbose:
+        print(f'\tScale factor for Imax based on DM satelite spots is {dm_spot_scale_factor:.2e}')
+        print(f'\tImax scaled to {Imax_true:.2e}')
+
+    ds_im = raw_im - dark_im
+    ni_im = ds_im * exp_time_factor * gain_factor * fiber_atten_factor * laser_power_factor / Imax_true
+
     return ni_im
 
 def compute_contrast(ni_im, mask, verbose=True):
@@ -35,7 +97,7 @@ def compute_contrast(ni_im, mask, verbose=True):
         Nmask = mask.sum()
         Npix_gtz = gtz_mask.sum()
         ratio = Npix_gtz / Nmask
-        print(f'Ratio of pixels greater than zero versus total pixels: {Npix_gtz} / {Nmask} = {ratio:.2f}')
+        print(f'\tRatio of pixels greater than zero versus total pixels: {Npix_gtz} / {Nmask} = {ratio:.2f}')
     ni_im_gtz = ni_im_masked[gtz_mask] # select values greater than zero
     contrast = np.mean(ni_im_gtz)
     return contrast
@@ -144,11 +206,11 @@ def set_cam_roi(xc, yc, npix, client, cam_name='camsci', bin_mode=2, delay=0.25)
     time.sleep(delay)
     print(f'Set {cam_name} ROI.')
 
-def set_cam_exp_time(exp_time, client, cam_name='camsci', delay=0.25):
+def set_cam_exp_time(exp_time, client, cam_name='camsci', delay=0.25, verbose=True):
     client.wait_for_properties([f'{cam_name}.exptime'])
     client[f'{cam_name}.exptime.target'] = exp_time
     time.sleep(delay)
-    print(f'Set the {cam_name} exposure time to {exp_time:.2e}s')
+    if verbose: print(f'Set the {cam_name} exposure time to {exp_time:.2e}s')
 
 def get_cam_exp_time(client, cam_name):
     client.wait_for_properties([f'{cam_name}.exptime'])
@@ -183,6 +245,187 @@ def get_im_params(client, cam_name, verbose=True):
         )
     return im_params
 
+def set_nsv_sliced(client, delay=0.5,):
+    # update roi parameters
+    client.wait_for_properties([
+        'camnsv.mode',
+    ])
+    
+    client['camnsv.mode.sliced'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+def set_nsv_sliced_roi(client, xc=None, yc=None, npix=None, vcrop_offset=None, delay=0.5,):
+    # update roi parameters
+    client.wait_for_properties([
+        'camnsv.mode',
+        'camnsv.roi_region_h' ,'camnsv.roi_region_w',
+        'camnsv.roi_region_x', 'camnsv.roi_region_y', 
+        'camnsv.vcropoffset',
+        'camnsv.roi_set',
+    ])
+    
+    client['camnsv.mode.sliced'] = purepyindi.SwitchState.ON
+    time.sleep(0.5)
+    if vcrop_offset is not None: 
+        client['camnsv.vcropoffset.target'] = vcrop_offset
+    if npix is not None:
+        client['camnsv.roi_region_h.target'] = npix
+        client['camnsv.roi_region_w.target'] = npix
+    if xc is not None: 
+        client['camnsv.roi_region_x.target'] = xc
+    if yc is not None: 
+        client['camnsv.roi_region_y.target'] = yc
+    time.sleep(0.25)
+    client['camnsv.roi_set.request'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+def set_nsv_fullframe(client, delay=0.5,):
+    # update roi parameters
+    client.wait_for_properties([
+        'camnsv.mode',
+        'camnsv.roi_set_full'
+    ])
+    
+    client['camnsv.mode.fullframe'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+    client['camnsv.roi_set_full.request'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+def set_nsv_fullframe_roi(client, xc=None, yc=None, npix=None, delay=0.5,):
+    # update roi parameters
+    client.wait_for_properties([
+        'camnsv.mode',
+        'camnsv.roi_region_h' ,'camnsv.roi_region_w',
+        'camnsv.roi_region_x', 'camnsv.roi_region_y', 
+        'camnsv.roi_set',
+    ])
+    
+    client['camnsv.mode.fullframe'] = purepyindi.SwitchState.ON
+    time.sleep(0.5)
+    if npix is not None:
+        client['camnsv.roi_region_h.target'] = npix
+        client['camnsv.roi_region_w.target'] = npix
+    if xc is not None: 
+        client['camnsv.roi_region_x.target'] = xc
+    if yc is not None: 
+        client['camnsv.roi_region_y.target'] = yc
+    time.sleep(0.25)
+    client['camnsv.roi_set.request'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+def set_nsv455_roi(
+        client, 
+        mode=None, 
+        xc=None, 
+        yc=None, 
+        npix=None, 
+        delay=0.5,
+    ):
+    # update roi parameters
+    client.wait_for_properties([
+        'nsv455.mode',
+        'nsv455.roi_region_h', 'nsv455.roi_region_w',
+        'nsv455.roi_region_x', 'nsv455.roi_region_y', 
+        'nsv455.roi_set',
+    ])
+    
+    if mode is not None:
+        client[f'nsv455.mode.{mode}'] = purepyindi.SwitchState.ON
+        time.sleep(10)
+    if npix is not None:
+        client['nsv455.roi_region_h.target'] = npix
+        client['nsv455.roi_region_w.target'] = npix
+    if xc is not None: 
+        client['nsv455.roi_region_x.target'] = xc
+    if yc is not None: 
+        client['nsv455.roi_region_y.target'] = yc
+    time.sleep(0.25)
+    client['nsv455.roi_set.request'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+def set_nsv455_fps(
+        client, 
+        fps,
+        delay=0.5,
+    ):
+    # update roi parameters
+    client.wait_for_properties([
+        'nsv455.fps',
+    ])
+    
+    client['nsv455.fps.target'] = fps
+    time.sleep(delay)
+
+try:
+    from pylablib.devices import NKT
+except ImportError:
+    print('Could not import pylablib. NKT laser functionality not available.')
+
+class Laser(object):
+   
+    varia = 16
+    compact = 1
+   
+    def __init__(self, addr='/dev/ttyUSB2'):
+        self.addr = addr
+        self.device = self.connect()
+    
+    def connect(self):
+        return NKT.GenericInterbusDevice(self.addr)
+    
+    def close(self):
+        self.device.close()
+   
+    def get_wavelength_min(self):
+        return self.device.ib_get_reg(self.varia, 0x34, 'u16') / 10 # nm
+   
+    def set_wavelength_min(self, wavelen):
+        """
+        wavelen given in nm
+        """
+        self.device.ib_set_reg(self.varia, 0x34, int(np.rint(wavelen)*10), 'u16')
+
+    def get_wavelength_max(self):
+        return self.device.ib_get_reg(self.varia, 0x33, 'u16') / 10 # nm
+   
+    def set_wavelength_max(self, wavelen):
+        """
+        wavelen given in nm
+        """
+        self.device.ib_set_reg(self.varia, 0x33, int(np.rint(wavelen*10)), 'u16')
+
+    def get_varia_nd(self):
+        return self.device.ib_get_reg(self.varia, 0x32, 'u16') / 10 # %
+    
+    def set_varia_nd(self, percent):
+        self.device.ib_set_reg(self.varia, 0x32, int(np.rint(percent*10)), 'u16')
+
+    def emission_on(self):
+        self.device.ib_set_reg(self.compact, 0x30, 1, 'u8')
+
+    def emission_off(self):
+        self.device.ib_set_reg(self.compact, 0x30, 0, 'u8')
+
+    def get_power_level(self):
+        return self.device.ib_get_reg(self.compact, 0x3E, 'u8') # %
+    
+    def set_power_level(self, percent):
+        self.device.ib_set_reg(self.compact, 0x3E, int(percent), 'u8') # %
+
+    def set_central_wave_bandwidth(self, central_wave, bw):
+        """
+        Lightweight wrapper around set_wavelength_min/max:
+
+        Set the central wavelength and fractional bandwidth on the
+        laser device
+        """
+
+        wave_min = central_wave * (1-bw*0.5)
+        wave_max = central_wave * (1+bw*0.5)
+        self.set_wavelength_min(wave_min)
+        self.set_wavelength_max(wave_max)
+
 def set_dm(STREAM, command, delay=0.05):
     STREAM.write(1e6*command)
     time.sleep(delay)
@@ -201,12 +444,14 @@ def measure_waffle_center_and_angle(
         im_thresh=1e-4, 
         r_thresh_min=12,
         r_thresh_max=18, 
+        xc=0,
+        yc=0,
         verbose=True, 
         plot=True,
     ):
     npsf = waffle_im.shape[0]
     y,x = (xp.indices((npsf, npsf)) - npsf//2)*psf_pixelscale_lamD
-    r = xp.sqrt(x**2 + y**2)
+    r = xp.sqrt((x - xc)**2 + (y - yc)**2)
     waffle_mask = (waffle_im > im_thresh) * (r>r_thresh_min) * (r<r_thresh_max)
 
     centroids = []
@@ -223,15 +468,6 @@ def measure_waffle_center_and_angle(
     centroids = np.array(centroids)
     centroids[[2,3]] = centroids[[3,2]]
     if verbose: print('Centroids:\n', centroids)
-
-    if plot: 
-        patches = []
-        for i in range(4): patches.append(Circle(centroids[i], 1, fill=False, color='black'))
-        utils.imshow(
-            [waffle_mask, waffle_im, waffle_mask*waffle_im], 
-            norms=[LogNorm(np.max(waffle_im)/1e4)],
-            all_patches=[patches],
-        )
 
     mean_angle = 0.0
     for i in range(4):
@@ -263,9 +499,24 @@ def measure_waffle_center_and_angle(
     print('Measured center in X: ', xc)
     print('Measured center in Y: ', yc)
 
-    xshift = np.round(npsf/2 - xc)
-    yshift = np.round(npsf/2 - yc)
+    xshift = -np.round(npsf/2 - xc)
+    yshift = -np.round(npsf/2 - yc)
     print('Required shift in X: ', xshift)
     print('Required shift in Y: ', yshift)
 
+    if plot: 
+        patches1, patches2 = [], []
+        for i in range(4): 
+            patches1.append(Circle(centroids[i]-npsf//2, 1, fill=False, color='black'))
+            patches2.append(Circle(centroids[i]-npsf//2, 1, fill=False, color='black'))
+        patches1.append(Circle((xshift,yshift), 3, fill=True, color='red'))
+        patches2.append(Circle((xshift,yshift), 3, fill=True, color='red'))
+        utils.imshow(
+            [waffle_im, waffle_mask, waffle_mask*waffle_im], 
+            norms=[LogNorm(np.max(waffle_im)/1e4), LogNorm(np.max(waffle_im)/1e4), LogNorm(np.max(waffle_im)/1e4)],
+            pxscls=3*[1],
+            grids=3*[1],
+            all_patches=[patches1, patches2],
+        )
+    
     return xshift, yshift, mean_angle

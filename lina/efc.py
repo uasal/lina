@@ -20,7 +20,7 @@ def calibrate(
         wfs_mask, 
         amp=1e-9, 
         current_command=None, 
-        plot_response_map=True,
+        plot_response_map=False,
     ):
     """
     This function computes a Jacobian for EFC using a model of the coronagraph. 
@@ -77,12 +77,17 @@ def calibrate(
         dm_response_map = xp.zeros(dm_mask.shape)
         dm_response_map[dm_mask] = dm_response_rms/dm_response_rms.max()
         utils.imshow(
-            [dm_response_map]
+            [dm_response_map],
+            norms=[LogNorm(1e-2)],
         )
 
     return jac
 
-def init_data():
+def init_data(
+        wfs_mask=None, 
+        contrast0=None,
+        ni_im0=None,
+    ):
     efc_data = {
         'raw_images':[],
         'ni_images':[],
@@ -90,6 +95,9 @@ def init_data():
         'contrasts':[],
         'commands':[],
         'del_commands':[],
+        'wfs_mask':wfs_mask,
+        'ni_im0':ni_im0,
+        'contrast0':contrast0,
     }
     return efc_data
 
@@ -103,6 +111,7 @@ def run(efc_data,
         wfs_mask,
         dm_mask,
         control_matrix,
+        wfs_mask_mw = None,
         normalize_metric_fun=None,
         normalize_metric_params=None,
         num_iterations=3, 
@@ -141,6 +150,8 @@ def run(efc_data,
         control_matrix (ndarray): 
             Pseudo-inverted response matrix for the region of interest specified 
             by the wfs_mask. 
+        wfs_mask_mw (ndarray):
+            Binary mask defining the region in the focal plane to control when using multi band WFS.
         normalize_metric_fun (callable, optional): 
             Function that normalizes the metric image used to evaluate current contrast. If take_im_fun
             automatically returns normalized intensity images, this is not needed. Defaults to None.
@@ -157,8 +168,11 @@ def run(efc_data,
         efc_data (dict): 
             Dictionary of EFC data appended with the results of the new iterations performed. 
     """
+
+    if wfs_mask_mw is None:    # set multi wave mask to single wave mask if not provided with one
+        wfs_mask_mw = wfs_mask
     
-    Nmask = int(wfs_mask.sum())
+    Nmask = int(wfs_mask_mw.sum())
     Nact = dm_mask.shape[0]
 
     starting_itr = len(efc_data['commands']) + 1
@@ -170,8 +184,8 @@ def run(efc_data,
         print(f'Running iteration {starting_itr+i:d}')
 
         E_ab = estimate_ef_fun(**estimate_ef_params)
-        E_ab_vec[::2] = xp.real(E_ab[wfs_mask])
-        E_ab_vec[1::2] = xp.imag(E_ab[wfs_mask])
+        E_ab_vec[::2] = xp.real(E_ab[wfs_mask_mw])
+        E_ab_vec[1::2] = xp.imag(E_ab[wfs_mask_mw])
 
         del_acts = - gain * control_matrix.dot(E_ab_vec)
         del_command[dm_mask] = del_acts
@@ -182,6 +196,8 @@ def run(efc_data,
         metric_im = take_im_fun(**take_im_params)
         metric_im_ni = metric_im if normalize_metric_fun is None else normalize_metric_fun(metric_im, **normalize_metric_params)
         contrast = coro_utils.compute_contrast(metric_im_ni, wfs_mask)
+
+        print(f'\tContrast = {contrast:.3e}.')
 
         efc_data['raw_images'].append(copy.copy(metric_im))
         efc_data['ni_images'].append(copy.copy(metric_im_ni))

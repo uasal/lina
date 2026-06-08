@@ -28,10 +28,6 @@ def run(
         base_command=None,
         normalize_diff_fun=None,
         normalize_diff_params=None,
-        # jacobian=None,
-        # model=None,
-        # wavelength=None,
-        # E_FP_NOM=None,
         fp_shift=None,
         reg_cond=1e-3, 
         gain=1,
@@ -50,6 +46,7 @@ def run(
     all_ims = []
     diff_ims = []
     probe_efs = []
+    delE_probes = []
     for i in range(Nprobes):
         probe = probe_amp*probe_modes[i]
 
@@ -59,22 +56,24 @@ def run(
         set_dm_fun(base_command - probe, **set_dm_params)
         im_neg = take_im_fun(**take_im_params)
 
+        set_dm_fun(base_command, **set_dm_params)
+
         diff_im = im_pos - im_neg
         diff_im_ni = diff_im if normalize_diff_fun is None else normalize_diff_fun(diff_im, **normalize_diff_params)
         if fp_shift is not None:
             xcipy.ndimage.shift(diff_im_ni, (fp_shift[1], fp_shift[0]), order=0)
 
-        probe_ef = compute_probe_ef_fun(probe, **compute_probe_ef_params)
-
         all_ims.append([im_pos, im_neg])
         diff_ims.append(diff_im_ni)
-        probe_efs.append(probe_ef)
+
+        delE_probe = compute_probe_ef_fun(probe, **compute_probe_ef_params)
+        delE_probes.append(delE_probe)
 
         if plot:
             utils.imshow(
-                [probe, im_pos, diff_im_ni], 
+                [probe, im_pos*wfs_mask, diff_im_ni*wfs_mask], 
                 titles=['DM Probe', 'Positive Chop Image', 'Normalized Difference Image'],
-                norms=[None, LogNorm(xp.max(im_pos)/1e4), None, None],
+                norms=[None, LogNorm(xp.max(im_pos*wfs_mask)/1e3), None, None],
                 cmaps=['viridis', 'magma', 'magma', 'magma'],
                 # figsize=(18, 8),
                 wspace=0.3,
@@ -82,19 +81,18 @@ def run(
                 yticks=[[], [], [], []],
             )
 
-    set_dm_fun(base_command, **set_dm_params)
-
     all_ims = xp.array(all_ims)
     diff_ims = xp.array(diff_ims)
-    probe_efs = xp.array(probe_efs)
+    # probe_efs = xp.array(probe_efs)
+    delE_probes = xp.array(delE_probes)
 
     # Use batch process to estimate each pixel individually
     E_est = xp.zeros(Nmask, dtype=xp.complex128)
     for i in range(Nmask):
         delI = diff_ims[:, wfs_mask][:, i]
-        H = 4*xp.array(
-            [probe_efs[:, wfs_mask][:, i].real, 
-             probe_efs[:, wfs_mask][:, i].imag]
+        H = 2*xp.array(
+            [delE_probes[:, wfs_mask][:, i].real, 
+             delE_probes[:, wfs_mask][:, i].imag]
         ).T # Dimensions are 2 X N_probes
         
         Hinv = xp.linalg.pinv(H.T @ H, reg_cond) @ H.T

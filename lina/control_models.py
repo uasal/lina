@@ -30,8 +30,8 @@ class MODEL():
             self,
             wavelength_c=630e-9,
             wavelength=None, 
-            npix=500,
-            Ndef=502,
+            npix=512,
+            Ndef=None,
             N_vortex_lres=2048,
             vortex_win_diam=30, # diameter of the Tukey window in lambda/D to apply for the vortex model 
             vortex_hres_sampling=0.025, # lam/D per pixel; this value is chosen empirically
@@ -69,7 +69,7 @@ class MODEL():
         self.as_per_lamD = ((self.wavelength / (self.dm_beam_diam*self.lyot_ratio) )*u.radian).to(u.arcsec)
         
         self.npix = npix
-        self.Ndef = Ndef
+        self.Ndef = npix + 2 if Ndef is None else Ndef
         self.def_oversample = self.Ndef / self.npix
         self.ncamsci = ncamsci
 
@@ -104,7 +104,8 @@ class MODEL():
             coupling=act_coupling, 
             Nact=self.Nact+2,
         )
-        self.Nsurf = self.inf_fun.shape[0]
+        self.Nsurf = utils.get_sum_of_powers_of_2(self.inf_fun.shape[0]) # get next value that is a sum of powers of 2
+        self.inf_fun = utils.pad_or_crop(self.inf_fun, self.Nsurf) # pad to the correct shape
 
         # construct DM mask
         y,x = (xp.indices((self.Nact, self.Nact)) - self.Nact//2 + 1/2)
@@ -166,6 +167,7 @@ class MODEL():
             use_vortex=True, 
             return_ints=False, 
             plot=False,
+            sync=False,
         ):
 
         if wavelength is None: wavelength = self.wavelength_c
@@ -232,6 +234,9 @@ class MODEL():
         E_FP = props.mft_forward(E_FFFP, self.npix * self.lyot_ratio, self.ncamsci, camsci_pxscl_lamD)
         E_FP = xcipy.ndimage.rotate(E_FP, self.camsci_rotation, reshape=False, order=3)
 
+        if sync: 
+            xp.cuda.Device().synchronize()
+
         if use_vortex and plot: 
             utils.imshow(
                 [xp.abs(E_EP), xp.angle(E_EP),
@@ -258,20 +263,46 @@ class MODEL():
         else:
             return E_FP
         
+    def forward_mw(
+            self, 
+            actuators,
+            waves, 
+            wavelength=None, 
+            use_vortex=True, 
+            return_ints=False, 
+        ):
+        E_FPs = []
+        for i in range(len(waves)):
+            E_FPs.append(self.forward(actuators, waves[i], use_vortex=True, return_ints=False))
+        E_FPs = xp.array(E_FPs)
+        return E_FPs
+
+    def calc_wf(self):
+        dm_command = xp.sum(self.dm_commands, axis=0)
+        E_FP = self.forward(dm_command[self.dm_mask], self.wavelength, self.use_vortex)
+        return E_FP
+
     def snap(self):
         dm_command = xp.sum(self.dm_commands, axis=0)
         E_FP = self.forward(dm_command[self.dm_mask], self.wavelength, self.use_vortex)
         im = xp.abs(E_FP)**2
         return im
-
-
+    
+    def snap_bb(self, waves):
+        Nwaves = len(waves)
+        im = 0.0
+        for i in range(Nwaves):
+            self.wavelength = waves[i]
+            im += self.snap()/Nwaves
+        return im
 
 def val_and_grad(
         del_acts, 
         M, 
         rmad_vars, 
         verbose=False, 
-        plot=False, 
+        plot=False,
+        sync=False, 
     ):
     # Convert array arguments into correct types
     del_acts = xp.array(del_acts)
@@ -280,11 +311,11 @@ def val_and_grad(
     current_acts = xp.array(rmad_vars['current_acts'])
     E_ab = xp.array(rmad_vars['E_ab'])
     E_FP_NOM = xp.array(rmad_vars['E_FP_NOM'])
-    control_mask = xp.array(rmad_vars['control_mask'])
+    wfs_mask = xp.array(rmad_vars['wfs_mask'])
     wavelength = rmad_vars['wavelength']
     r_cond = rmad_vars['r_cond']
 
-    E_ab_l2norm = E_ab[control_mask].dot(E_ab[control_mask].conjugate()).real
+    E_ab_l2norm = E_ab[wfs_mask].dot(E_ab[wfs_mask].conjugate()).real
 
     # Compute E_DM using the forward DM model
     E_FP_with_delA, E_EP, DM_PHASOR = M.forward(
@@ -297,7 +328,7 @@ def val_and_grad(
 
     # compute the cost function
     E_predicted = E_ab + deltaE # take the measured E-field and add the model-based deltaE from new actuator command
-    E_predicted_vec = E_predicted[control_mask] # make sure to do array indexing
+    E_predicted_vec = E_predicted[wfs_mask] # make sure to do array indexing
     J_delE = E_predicted_vec.dot(E_predicted_vec.conjugate()).real
     J_c = r_cond * del_acts_waves.dot(del_acts_waves)
     J = (J_delE + J_c) / E_ab_l2norm
@@ -308,10 +339,10 @@ def val_and_grad(
         print(f'\tTotal cost-function value: {J:.2e}\n')
 
     # Compute the gradient with the adjoint model
-    # delE_masked = control_mask * delE # still a 2D array
+    # delE_masked = wfs_mask * delE # still a 2D array
     # delE_masked = xcipy.ndimage.rotate(delE_masked, -M.det_rotation, reshape=False, order=5)
     # dJ_dE_delA = 2 * delE_masked / E_ab_l2norm
-    E_predicted_masked = control_mask * E_predicted # still a 2D array
+    E_predicted_masked = wfs_mask * E_predicted # still a 2D array
     E_predicted_masked = xcipy.ndimage.rotate(E_predicted_masked, -M.camsci_rotation, reshape=False, order=5)
     dJ_ddeltaE = 2 * E_predicted_masked / E_ab_l2norm
 
@@ -355,6 +386,9 @@ def val_and_grad(
 
     dJ_dA_vec = dJ_dA[M.dm_mask].real + xp.array( r_cond * 2*del_acts_waves )
 
+    if sync:
+        xp.cuda.Device().synchronize()
+
     if plot: 
         utils.imshow(
             [xp.abs(dJ_ddeltaE)**2, xp.angle(dJ_ddeltaE),
@@ -367,7 +401,15 @@ def val_and_grad(
             xp.real(dJ_dS_DM), xp.imag(dJ_dS_DM),
             xp.real(dJ_dA), xp.imag(dJ_dA),], 
             titles=[
-                'EP Amplitude', 'EP Phase',
+                'Intensity', 'Phase',
+                'Amplitude', 'Phase',
+                'Amplitude', 'Phase',
+                'Amplitude', 'Phase',
+                'Amplitude', 'Phase',
+                'Amplitude', 'Phase',
+                'Amplitude', 'Phase',
+                'Real', 'Imaginary',
+                'Real', 'Imaginary',
             ],
             # npix=8*[int(1.2*self.npix)], 
             cmaps=8*['plasma', 'twilight'],
@@ -379,48 +421,88 @@ def val_and_grad(
 
     return ensure_np_array(J), ensure_np_array(dJ_dA_vec)
 
-def val_and_grad_bb(
+def val_and_grad_mw(
         del_acts, 
         M, 
-        actuators, 
-        E_abs, 
-        control_mask, 
-        waves, 
-        r_cond, 
-        weights=None, 
+        rmad_vars,
         verbose=False, 
-        plot=False, 
-        fancy_plot=False, 
+        plot=False,  
+        plot_all=False,
     ):
-    # del_acts, M, actuators, E_ab, control_mask, wavelength, r_cond,
-    Nwaves = len(waves)
+    # del_acts, M, actuators, E_ab, wfs_mask, wavelength, r_cond,
+    current_acts = xp.array(rmad_vars['current_acts'])
+    E_abs = xp.array(rmad_vars['E_abs'])
+    E_FP_NOMs = xp.array(rmad_vars['E_FP_NOMs'])
+    wfs_mask = xp.array(rmad_vars['wfs_mask'])
+    wfs_waves = rmad_vars['wfs_waves']
+    r_cond = rmad_vars['r_cond']
+    weights = rmad_vars['weights']
+
+    Nwaves = len(wfs_waves)
 
     del_acts_waves = del_acts/M.wavelength_c
 
-    r_cond_mono = 0
+    # current_acts = xp.array(rmad_vars['current_acts'])
+    # E_ab = xp.array(rmad_vars['E_ab'])
+    # E_FP_NOM = xp.array(rmad_vars['E_FP_NOM'])
+    # wfs_mask = xp.array(rmad_vars['wfs_mask'])
+    # wavelength = rmad_vars['wavelength']
+    # r_cond = rmad_vars['r_cond']
+
+    mono_rmad_vars = {
+        'current_acts':current_acts,
+        'wfs_mask':wfs_mask,
+        'r_cond':0,
+        # 'r_cond':r_cond,
+    }
+
     J_monos = np.zeros(Nwaves)
     dJ_dA_monos = np.zeros((Nwaves, M.Nacts))
     for i in range(Nwaves):
-        wavelength = waves[i]
-        E_ab = E_abs[i]
+        mono_rmad_vars.update({
+            'E_ab':E_abs[i],
+            'E_FP_NOM':E_FP_NOMs[i],
+            'wavelength':wfs_waves[i],
+        })
+
         J_mono, dJ_dA_mono = val_and_grad(
             del_acts, 
             M, 
-            actuators, 
-            E_ab, 
-            control_mask, 
-            wavelength, 
-            r_cond_mono, 
+            mono_rmad_vars,
             verbose=verbose, 
-            plot=plot, 
-            fancy_plot=fancy_plot,
+            plot=plot_all, 
         )
         
         J_monos[i] = J_mono
         dJ_dA_monos[i] = dJ_dA_mono
 
-    J_bb = np.sum(J_monos)/Nwaves + r_cond * del_acts_waves.dot(del_acts_waves)
-    dJ_dA_bb = np.sum(dJ_dA_monos, axis=0) + ensure_np_array( r_cond * 2*del_acts_waves )
+        if plot:
+            dm_grad = xp.zeros((M.Nact,M.Nact))
+            dm_grad[M.dm_mask] = dJ_dA_mono
+            utils.imshow(
+                [dm_grad]
+            )
+
+    # J_bb = np.sum(J_monos)/Nwaves + r_cond * del_acts_waves.dot(del_acts_waves)
+    # dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves + ensure_np_array( r_cond * 2*del_acts_waves )
+
+    # J_bb = np.sum(J_monos)/Nwaves
+    # dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves
+
+    # if weights is None: 
+    #     J_bb = np.sum(J_monos)/Nwaves
+    #     dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves
+    # else: 
+    #     J_bb = np.sum(weights * J_monos) / np.sum(weights)
+    #     dJ_dA_bb = np.sum(weights[:, None] * dJ_dA_monos, axis=0) / np.sum(weights)
+
+    if weights is None: 
+        J_bb = np.sum(J_monos)/Nwaves + r_cond * del_acts_waves.dot(del_acts_waves)
+        dJ_dA_bb = np.sum(dJ_dA_monos, axis=0)/Nwaves + ensure_np_array( r_cond * 2*del_acts_waves )
+    else: 
+        J_bb = np.sum(weights * J_monos) / np.sum(weights) + r_cond * del_acts_waves.dot(del_acts_waves)
+        dJ_dA_bb = np.sum(weights[:, None] * dJ_dA_monos, axis=0) / np.sum(weights) + ensure_np_array( r_cond * 2*del_acts_waves )
+
     
     return J_bb, dJ_dA_bb
 

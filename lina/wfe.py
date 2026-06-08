@@ -10,6 +10,43 @@ import matplotlib.pyplot as plt
 
 import poppy
 
+def noll_index_to_mn(j):
+    # j is the Noll index of the Zernike term. 
+    # Note that Noll Zernikes start with j=1, which is the piston term. 
+    n = int(np.floor( (np.sqrt(8*(j-1) + 1) - 1)/2 ))
+    m = int( (-1)**j * ( n%2 + 2*np.floor( (j - n*(n+1)/2 - 1 + (n+1)%2 )/2 ) ))
+
+    return m,n
+
+def mn_to_noll_index(m,n):
+    assert isinstance(m, int) and isinstance(n, int)
+    if n%4<=1:
+        if m>0:
+            j = n*(n+1)/2 + abs(m) + 0
+        elif m<=0:
+            j = n*(n+1)/2 + abs(m) + 1
+    elif n%4>1:
+        if m<0:
+            j = n*(n+1)/2 + abs(m) + 0
+        elif m>=0:
+            j = n*(n+1)/2 + abs(m) + 1
+    return int(j)
+
+def fringe_index_to_mn(j):
+    g = np.ceil(np.sqrt(j) - 1)
+    n = g - 1 + np.ceil((j-g**2)/2)
+    m = (-1)**( (j-g**2)%2 + 1 ) * (2*g - n)
+    return int(m), int(n)
+
+def mn_to_fringe_index(m,n):
+    # j = (1 + (n + abs(m))/2)**2 - 2*abs(m) + 0 if m<=0 else 1
+    assert isinstance(m, int) and isinstance(n, int)
+    if 0<=m:
+        j = (1 + (n + abs(m))/2)**2 - 2*abs(m) + 0
+    elif 0>m:
+        j = (1 + (n + abs(m))/2)**2 - 2*abs(m) + 1
+    return int(j)
+
 def generate_opd(
         npix=1000, 
         oversample=1, 
@@ -113,58 +150,89 @@ def generate_freqs(
         return ensure_np_array(freqs), ensure_np_array(times)
     return freqs, times
 
-def kneePSD(
+def generate_freqs(
+        delt = 0.1e-3,
+        tmax = 10.0,
+        verbose=False,
+    ):
+
+    fmax = 1/delt/2
+    delf = 1/(tmax + delt)
+    delf = 1/(tmax)
+    Nf = int(np.round(fmax/delf)) + 1
+
+    freqs = xp.linspace(0, fmax, Nf)
+
+    Nt = 2*(Nf-1)
+    times = xp.linspace(0, (Nt-1)*delt, Nt)
+
+    if verbose:
+        print(f'Generated frequency vector with sampling of {delf:.2e}Hz and maximum frequency of {freqs.max():.2e}Hz.')
+
+    return freqs, delf, times
+
+def roll_psd(
         freqs, 
         beta, 
-        fn, 
-        alpha
+        f_roll, 
+        alpha,
+        normalized=True,
+        verbose=True,
     ):
-    psd = beta/(1+freqs/fn)**alpha
-    try:
-        psd.decompose()
-        return psd
-    except:
-        return psd
+    if normalized:
+        psd = beta**2 / (1+freqs/f_roll)**alpha * (alpha - 1)/f_roll # the last factor is to make sure the RMS of the PSD is normalized correctly
+    else:
+        psd = beta**2 / (1+freqs/f_roll)**alpha
+
+    if verbose: 
+        psd_rms = np.sqrt(scipy.integrate.simpson(ensure_np_array(psd), x=ensure_np_array(freqs)))
+        print(f'\tRMS of generated knee PSD: {psd_rms:.3e}')
+
+    return psd
 
 def generate_time_series(
         psd, 
-        f_max, 
+        freqs, 
         rms=None,  
         seed=123,
-        return_times=False,
         return_np=False,
+        verbose = False,
     ):
+    fmax = freqs.max()
+    delf = freqs[1] - freqs[0]
     Nfreq_samps = len(psd)
     Ntime_samps = 2 * (Nfreq_samps - 1)
-    del_time = 1/(2*f_max)
-    times = xp.linspace(0, (Ntime_samps-1)*del_time, Ntime_samps)
+    del_time = 1/(2*fmax)
+    times = xp.linspace(0, (Ntime_samps)*del_time, Ntime_samps)
 
-    P_fft_one_sided = copy.copy(psd)
+    P_one_sided = copy.copy(psd)
 
     # Because P includes both DC and Nyquist (N/2+1), P_fft must have 2*(N_P-1) elements
-    P_fft_one_sided[0] = 2 * P_fft_one_sided[0]
-    P_fft_one_sided[-1] = 2 * P_fft_one_sided[-1]
+    P_one_sided[0] = 2 * P_one_sided[0]
+    P_one_sided[-1] = 2 * P_one_sided[-1]
 
-    P_fft_new = xp.zeros((Ntime_samps,), dtype=complex)
-    P_fft_new[0:int(Ntime_samps/2)+1] = P_fft_one_sided
-    P_fft_new[int(Ntime_samps/2)+1:] = P_fft_one_sided[-2:0:-1]
+    P_two_sided = xp.zeros((Ntime_samps,), dtype=complex)
+    P_two_sided[0:int(Ntime_samps/2)+1] = P_one_sided
+    P_two_sided[int(Ntime_samps/2)+1:] = P_one_sided[-2:0:-1] # go from second to last element up to the first element backwards
 
     # Take the square root to get the amplitude of the power spectrum
-    amplitude_spectrum = xp.sqrt(P_fft_new)
+    amplitude_spectrum = xp.sqrt(P_two_sided) * Ntime_samps * xp.sqrt(delf/2)
 
     # Create random phases for all FFT terms other than DC and Nyquist
     xp.random.seed(xp.uint64(seed))
     phases = xp.random.uniform(0, 2*np.pi, (int(Ntime_samps/2),))
 
     # Ensure X_new has complex conjugate symmetry
-    amplitude_spectrum[1:int(Ntime_samps/2)+1] = amplitude_spectrum[1:int(Ntime_samps/2)+1] * np.exp(2j*phases)
-    amplitude_spectrum[int(Ntime_samps/2):] = amplitude_spectrum[int(Ntime_samps/2):] * np.exp(-2j*phases[::-1])
-    amplitude_spectrum = amplitude_spectrum * np.sqrt(Ntime_samps) / np.sqrt(2)
+    amplitude_spectrum[1:int(Ntime_samps/2)+1] = amplitude_spectrum[1:int(Ntime_samps/2)+1] * xp.exp(2j*phases)
+    amplitude_spectrum[int(Ntime_samps/2):] = amplitude_spectrum[int(Ntime_samps/2):] * xp.exp(-2j*phases[::-1])
 
-    # This is the new time series with a given PSD
-    time_series = xcipy.fft.ifft(amplitude_spectrum)
-    # print(x_new.real, x_new.imag)
+    time_series = xp.fft.ifft(amplitude_spectrum)
+    assert xp.sum(time_series.imag)<xp.sum(time_series.real)/1e12
     time_series = time_series.real
+
+    if verbose:
+        time_series_rms = xp.sqrt(xp.mean(xp.square(time_series)))
+        print(f'\tRMS of generated time series: {time_series_rms:.3e} RMS')
 
     if rms is not None: 
         time_series *= rms/np.sqrt(np.mean(np.square(time_series)))
@@ -172,11 +240,8 @@ def generate_time_series(
     if return_np:
         time_series = ensure_np_array(time_series)
         times = ensure_np_array(times)
-
-    if return_times:
-        return time_series, times
     
-    return time_series
+    return time_series, times
 
 def compute_cumulative_psd(freqs, psd):
     cumulative_psd = []

@@ -32,7 +32,7 @@ def make_grid(npix, pixelscale=1, half_shift=False):
         y,x = (xp.indices((npix, npix)) - npix//2)*pixelscale
     return x,y
 
-def pad_or_crop( arr_in, npix ):
+def pad_or_crop( arr_in, npix):
     n_arr_in = arr_in.shape[0]
     if n_arr_in == npix:
         return arr_in
@@ -41,11 +41,30 @@ def pad_or_crop( arr_in, npix ):
         x2 = x1 + npix
         arr_out = arr_in[x1:x2,x1:x2].copy()
     else:
-        arr_out = xp.zeros((npix,npix), dtype=arr_in.dtype)
+        arr_out = np.zeros((npix,npix), dtype=arr_in.dtype) if isinstance(arr_in, np.ndarray) else xp.zeros((npix,npix), dtype=arr_in.dtype)
         x1 = npix // 2 - n_arr_in // 2
         x2 = x1 + n_arr_in
         arr_out[x1:x2,x1:x2] = arr_in
     return arr_out
+
+def nearest_power_of_2(n):
+    if n <= 0: return 1
+    # Find the exponents for the powers of 2 below and above n
+    low = 2 ** np.floor(np.log2(n))
+    high = 2 ** np.ceil(np.log2(n))
+    
+    # Return the one with the smallest difference
+    val = int(low) if (n - low) < (high - n) else int(high)
+    return val
+
+def get_sum_of_powers_of_2(val, return_all=False):
+    np2 = nearest_power_of_2(val)
+    remainder = val - np2
+    np2_gtr = 2 ** int(np.ceil(np.log2(remainder + 0.1)))
+    total = np2 + np2_gtr
+    if return_all:
+        return total, np2, np2_gtr
+    return total
 
 def imshow(
         arrs,
@@ -158,7 +177,7 @@ def imshow(
         ax.set_ylabel(ylabel, fontsize=label_fz, labelpad=ylabel_pad)
         if xtick is not None: ax.set_xticks(xtick)
         if ytick is not None: ax.set_yticks(ytick)
-        if grid is not None: ax.grid()
+        if grid: ax.grid()
         if patches is not None: 
             for patch in patches:
                 ax.add_patch(patch)
@@ -295,6 +314,7 @@ def create_zernike_modes(pupil_mask, nmodes=15, remove_modes=0, return_np=False)
     
     return zernikes
 
+
 def lstsq(modes, data):
     """Least-Squares fit of modes to data.
 
@@ -321,6 +341,7 @@ def lstsq(modes, data):
     return c
 
 def tikhonov_inverse(A, rcond=1e-15, return_all=False, return_np=False):
+    A = xp.array(A)
     U, s, Vt = xp.linalg.svd(A, full_matrices=False)
     s_inv = s/(s**2 + (rcond * s.max())**2)
     P = (Vt.T * s_inv).dot(U.T)
@@ -371,6 +392,7 @@ def create_annular_focal_plane_mask(
         x_shift=0,
         y_shift=0,
         return_np=False,
+        plot=False,
     ):
     if centering=='even':
         x = (xp.linspace(-npsf/2, npsf/2-1, npsf) + 1/2) * psf_pixelscale
@@ -385,18 +407,25 @@ def create_annular_focal_plane_mask(
     mask = xcipy.ndimage.shift(mask, (y_shift, x_shift), order=0)
     if return_np:
         return ensure_np_array(mask)
+    
+    if plot:
+        imshow(
+            [mask]
+        )
+    
     return mask
 
 def create_annular_mask(
         N, 
-        pixelscale, 
         irad, 
         orad,  
+        pixelscale=1, 
         edge=None,
         x_shift=0,
         y_shift=0,
         rotation=0,
         return_np=False,
+        plot=False,
     ):
     x = (xp.linspace(-N/2, N/2-1, N) + 1/2) * pixelscale
     x,y = xp.meshgrid(x,x)
@@ -408,6 +437,12 @@ def create_annular_mask(
     mask = xcipy.ndimage.shift(mask, (y_shift, x_shift), order=0)
     if return_np:
         return ensure_np_array(mask)
+    
+    if plot:
+        imshow(
+            [mask]
+        )
+
     return mask
 
 def get_radial_dist(shape, scaleyx=(1.0, 1.0), cenyx=None):
