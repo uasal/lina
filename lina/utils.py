@@ -424,10 +424,14 @@ def create_annular_mask(
         x_shift=0,
         y_shift=0,
         rotation=0,
+        centering='odd', # odd or even
         return_np=False,
         plot=False,
     ):
-    x = (xp.linspace(-N/2, N/2-1, N) + 1/2) * pixelscale
+    if centering=='even':
+        x = (xp.linspace(-N/2, N/2-1, N) + 1/2) * pixelscale
+    elif centering=='odd':
+        x = xp.linspace(-N/2, N/2-1, N) * pixelscale
     x,y = xp.meshgrid(x,x)
     r = xp.hypot(x, y)
     mask = (r > irad) * (r < orad)
