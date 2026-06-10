@@ -243,7 +243,19 @@ def generate_time_series(
     
     return time_series, times
 
-def compute_cumulative_psd(freqs, psd):
+def compute_psd(
+        time_series,
+        sampling, 
+        nperseg=4096,
+    ):
+
+    psd_freqs, psd = scipy.signal.welch(time_series, 1/sampling, nperseg=nperseg)
+    return psd, psd_freqs
+
+def compute_cumulative_psd(
+        freqs, 
+        psd
+    ):
     cumulative_psd = []
     for i in range(1,len(freqs)):
         psd_domain = freqs[0:i]
