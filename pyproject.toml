@@ -1,0 +1,140 @@
+[project]
+name = "lina"
+license = { text = "GNU GENERAL PUBLIC LICENSE - Verison 3" }
+readme = "README.md"
+description = "Collection of wavefront control and utility algorithms for high contrast imaging."
+authors = [
+    { name = "Kian Milani", email = "kianmilani@arizona.edu" },
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+]
+dynamic = ["version"]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "scipy",
+    "astropy",
+    "scikit-image",
+    "poppy @ git+ssh://git@github.com/spacetelescope/poppy.git",
+]
+
+[project.urls]
+"Source Code" = "https://github.com/uasal/lina"
+Homepage = "https://github.com/uasal/lina/blob/main/README.md"
+Repository = "https://github.com/uasal/lina"
+
+# On a mac, install optional dependencies with `pip install '.[dev]'` (include the single quotes)
+[project.optional-dependencies]
+dev = [
+    "jupyter", # Clears output from Jupyter notebooks
+    "mypy", # Used for static type checking of files
+    "pre-commit", # Used to run checks before finalizing a git commit
+    "ruff", # Used for static linting of files
+    "types-toml",
+    "sphinx",
+    "pre-commit",
+]
+
+[dependency-groups]
+magaox = [
+    # "magpyx @ file:///opt/MagAOX/source/magpyx",
+    "magpyx @ git+ssh://git@github.com/magao-x/magpyx.git",
+    # "purepyindi @ file:///opt/MagAOX/source/purepyindi",
+    "purepyindi @ git+ssh://git@github.com/magao-x/purepyindi.git",
+    # "purepyindi2 @ file:///opt/MagAOX/source/purepyindi2",
+    "purepyindi2 @ git+ssh://git@github.com/xwcl/purepyindi2.git",
+    # "ImageStreamIOWrap @ file:///opt/MagAOX/source/milk/src/ImageStreamIO",
+    # "ImageStreamIOWrap @ git+ssh://git@github.com/jaredmales/ImageStreamIO.git",
+    "ImageStreamIOWrap @ git+ssh://git@github.com/magao-x/ImageStreamIO.git",
+]
+
+[build-system]
+requires = [
+    "setuptools>=62", # Used to build and package the Python project
+    "setuptools_scm>=6.2", # Gets release version from git. Makes it available programmatically
+    "wheel"
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+write_to = "lina/_version.py"
+version_scheme = "post-release"
+local_scheme = "node-and-date"
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]
+
+[tool.black]
+line-length = 110
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 110
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    # pycodestyle
+    "E",
+    "W",
+    # Pyflakes
+    "F",
+    # pep8-naming
+    "N",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+    # docstrings
+    "D101",
+    "D102",
+    "D103",
+    "D106",
+    "D206",
+    "D207",
+    "D208",
+    "D300",
+    "D417",
+    "D419",
+    # Numpy v2.0 compatibility
+    "NPY201",
+]
+
+extend-select = ["I"]
+
+ignore = [
+    "UP006", # Allow non standard library generics in type hints
+    "UP007", # Allow Union in type hints
+    "SIM114", # Allow if with same arms
+    "B028", # Allow default warning level
+    "SIM117", # Allow nested with
+    "UP015", # Allow redundant open parameters
+    "UP028", # Allow yield in for loop
+]
+[tool.setuptools.package-data]
+utils_config = ["py.typed"]
+
+[tool.setuptools.packages.find]
+namespaces = false
+
+[tool.coverage.run]
+source = [
+    "lina",
+]
+omit=["lina/_version.py"]
+
+

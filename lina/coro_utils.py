@@ -20,6 +20,11 @@ try:
 except ImportError:
     print('SCoOB interface does not have the required packages to operate.')
 
+try:
+    from pylablib.devices import NKT
+except ImportError:
+    print('Could not import pylablib. NKT laser functionality not available.')
+
 def normalize_coro_im(raw_im, im_params, ref_params, dark_im=0.0, verbose=True):
     # exp_time_factor = ref_params['exp_time'] / im_params['exp_time'] if 'exp_time' in ref_params.keys() else 1.0
     # gain_factor = 10**(ref_params['gain']/20 * 0.1) / 10**(im_params['gain']/20 * 0.1) if 'gain' in ref_params.keys() else 1.0
@@ -430,13 +435,172 @@ def set_dm(STREAM, command, delay=0.05):
     STREAM.write(1e6*command)
     time.sleep(delay)
 
-def add_dm(STREAM, command, delay=0.05):
-    STREAM.write(STREAM.grab_latest() + 1e6*command)
+def set_nsv_sliced_roi(client, xc=None, yc=None, npix=None, vcrop_offset=None, delay=0.5,):
+    # update roi parameters
+    client.wait_for_properties([
+        'camnsv.mode',
+        'camnsv.roi_region_h' ,'camnsv.roi_region_w',
+        'camnsv.roi_region_x', 'camnsv.roi_region_y', 
+        'camnsv.vcropoffset',
+        'camnsv.roi_set',
+    ])
+    
+    client['camnsv.mode.sliced'] = purepyindi.SwitchState.ON
+    time.sleep(0.5)
+    if vcrop_offset is not None: 
+        client['camnsv.vcropoffset.target'] = vcrop_offset
+    if npix is not None:
+        client['camnsv.roi_region_h.target'] = npix
+        client['camnsv.roi_region_w.target'] = npix
+    if xc is not None: 
+        client['camnsv.roi_region_x.target'] = xc
+    if yc is not None: 
+        client['camnsv.roi_region_y.target'] = yc
+    time.sleep(0.25)
+    client['camnsv.roi_set.request'] = purepyindi.SwitchState.ON
     time.sleep(delay)
 
-def zero_dm(STREAM, delay=0.05):
-    STREAM.write(np.zeros(STREAM.shape))
+def set_nsv_fullframe(client, delay=0.5,):
+    # update roi parameters
+    client.wait_for_properties([
+        'camnsv.mode',
+        'camnsv.roi_set_full'
+    ])
+    
+    client['camnsv.mode.fullframe'] = purepyindi.SwitchState.ON
     time.sleep(delay)
+
+    client['camnsv.roi_set_full.request'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+def set_nsv_fullframe_roi(client, xc=None, yc=None, npix=None, delay=0.5,):
+    # update roi parameters
+    client.wait_for_properties([
+        'camnsv.mode',
+        'camnsv.roi_region_h' ,'camnsv.roi_region_w',
+        'camnsv.roi_region_x', 'camnsv.roi_region_y', 
+        'camnsv.roi_set',
+    ])
+    
+    client['camnsv.mode.fullframe'] = purepyindi.SwitchState.ON
+    time.sleep(0.5)
+    if npix is not None:
+        client['camnsv.roi_region_h.target'] = npix
+        client['camnsv.roi_region_w.target'] = npix
+    if xc is not None: 
+        client['camnsv.roi_region_x.target'] = xc
+    if yc is not None: 
+        client['camnsv.roi_region_y.target'] = yc
+    time.sleep(0.25)
+    client['camnsv.roi_set.request'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+def set_nsv455_roi(
+        client, 
+        mode=None, 
+        xc=None, 
+        yc=None, 
+        npix=None, 
+        delay=0.5,
+    ):
+    # update roi parameters
+    client.wait_for_properties([
+        'nsv455.mode',
+        'nsv455.roi_region_h', 'nsv455.roi_region_w',
+        'nsv455.roi_region_x', 'nsv455.roi_region_y', 
+        'nsv455.roi_set',
+    ])
+    
+    if mode is not None:
+        client[f'nsv455.mode.{mode}'] = purepyindi.SwitchState.ON
+        time.sleep(10)
+    if npix is not None:
+        client['nsv455.roi_region_h.target'] = npix
+        client['nsv455.roi_region_w.target'] = npix
+    if xc is not None: 
+        client['nsv455.roi_region_x.target'] = xc
+    if yc is not None: 
+        client['nsv455.roi_region_y.target'] = yc
+    time.sleep(0.25)
+    client['nsv455.roi_set.request'] = purepyindi.SwitchState.ON
+    time.sleep(delay)
+
+def set_nsv455_fps(
+        client, 
+        fps,
+        delay=0.5,
+    ):
+    # update roi parameters
+    client.wait_for_properties([
+        'nsv455.fps',
+    ])
+    
+    client['nsv455.fps.target'] = fps
+    time.sleep(delay)
+
+class NKTLaser(object):
+   
+    varia = 16
+    compact = 1
+   
+    def __init__(self, addr='/dev/ttyUSB2'):
+        self.addr = addr
+        self.device = self.connect()
+    
+    def connect(self):
+        return NKT.GenericInterbusDevice(self.addr)
+    
+    def close(self):
+        self.device.close()
+   
+    def get_wavelength_min(self):
+        return self.device.ib_get_reg(self.varia, 0x34, 'u16') / 10 # nm
+   
+    def set_wavelength_min(self, wavelen):
+        """
+        wavelen given in nm
+        """
+        self.device.ib_set_reg(self.varia, 0x34, int(np.rint(wavelen)*10), 'u16')
+
+    def get_wavelength_max(self):
+        return self.device.ib_get_reg(self.varia, 0x33, 'u16') / 10 # nm
+   
+    def set_wavelength_max(self, wavelen):
+        """
+        wavelen given in nm
+        """
+        self.device.ib_set_reg(self.varia, 0x33, int(np.rint(wavelen*10)), 'u16')
+
+    def get_varia_nd(self):
+        return self.device.ib_get_reg(self.varia, 0x32, 'u16') / 10 # %
+    
+    def set_varia_nd(self, percent):
+        self.device.ib_set_reg(self.varia, 0x32, int(np.rint(percent*10)), 'u16')
+
+    def emission_on(self):
+        self.device.ib_set_reg(self.compact, 0x30, 1, 'u8')
+
+    def emission_off(self):
+        self.device.ib_set_reg(self.compact, 0x30, 0, 'u8')
+
+    def get_power_level(self):
+        return self.device.ib_get_reg(self.compact, 0x3E, 'u8') # %
+    
+    def set_power_level(self, percent):
+        self.device.ib_set_reg(self.compact, 0x3E, int(percent), 'u8') # %
+
+    def set_central_wave_bandwidth(self, central_wave, bw):
+        """
+        Lightweight wrapper around set_wavelength_min/max:
+
+        Set the central wavelength and fractional bandwidth on the
+        laser device
+        """
+
+        wave_min = central_wave * (1-bw*0.5)
+        wave_max = central_wave * (1+bw*0.5)
+        self.set_wavelength_min(wave_min)
+        self.set_wavelength_max(wave_max)
 
 def measure_waffle_center_and_angle(
         waffle_im, 
@@ -520,3 +684,5 @@ def measure_waffle_center_and_angle(
         )
     
     return xshift, yshift, mean_angle
+
+

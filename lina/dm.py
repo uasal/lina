@@ -98,6 +98,7 @@ def create_fourier_modes(
         # edge=iwa-fourier_sampling, 
         edge=0,
         rotation=rotation,
+        centering='even',
     )
     if plot: 
         utils.imshow(

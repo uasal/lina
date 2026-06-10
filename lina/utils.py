@@ -9,6 +9,7 @@ import pickle
 import os
 import shutil
 import glob
+import skimage
 
 import matplotlib.pyplot as plt
 plt.rcParams['image.origin'] = 'lower'
@@ -424,10 +425,14 @@ def create_annular_mask(
         x_shift=0,
         y_shift=0,
         rotation=0,
+        centering='odd', # odd or even
         return_np=False,
         plot=False,
     ):
-    x = (xp.linspace(-N/2, N/2-1, N) + 1/2) * pixelscale
+    if centering=='even':
+        x = (xp.linspace(-N/2, N/2-1, N) + 1/2) * pixelscale
+    elif centering=='odd':
+        x = xp.linspace(-N/2, N/2-1, N) * pixelscale
     x,y = xp.meshgrid(x,x)
     r = xp.hypot(x, y)
     mask = (r > irad) * (r < orad)
@@ -480,7 +485,31 @@ def plot_radial_contrast(im, mask, pixelscale, nbins=30, cenyx=None, xlims=None,
     plt.close()
     display(fig)
     
+def centroid(
+        im,
+        thresh=None, 
+        plot=True,
+    ):
 
+    im_mask = im > thresh if thresh is not None else np.ones_like(im)
+
+    masked_im = im*im_mask
+
+    cen = skimage.measure.centroid(masked_im)
+    cen = np.flip(cen)
+
+    if plot:
+        imshow(
+            [im, im_mask, masked_im],
+            norms=[LogNorm(), None, LogNorm()],
+            all_patches=[
+                [Circle((cen[0], cen[1]), im.shape[0]/120, fill=True, color='cyan')],
+                None, 
+                [Circle((cen[0], cen[1]), im.shape[0]/120, fill=True, color='cyan')],
+            ],
+        )
+
+    return cen
 
 
 
