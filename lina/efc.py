@@ -13,7 +13,6 @@ from matplotlib.colors import LogNorm, Normalize, CenteredNorm
 from matplotlib.gridspec import GridSpec
 
 def calibrate(
-        # model, 
         compute_ef_fun,
         compute_ef_params,
         dm_mask,
@@ -95,6 +94,7 @@ def init_data(
         'contrasts':[],
         'commands':[],
         'del_commands':[],
+        'reg_conds':[],
         'wfs_mask':wfs_mask,
         'ni_im0':ni_im0,
         'contrast0':contrast0,
@@ -110,7 +110,8 @@ def run(efc_data,
         estimate_ef_params,
         wfs_mask,
         dm_mask,
-        control_matrix,
+        response_matrix,
+        reg_cond,
         wfs_mask_mw = None,
         normalize_metric_fun=None,
         normalize_metric_params=None,
@@ -178,6 +179,8 @@ def run(efc_data,
     starting_itr = len(efc_data['commands']) + 1
     total_command = copy.copy(efc_data['commands'][-1]) if len(efc_data['commands'])>0 else xp.zeros((Nact,Nact))
 
+    control_matrix = utils.beta_reg(response_matrix, reg_cond)
+
     del_command = xp.zeros(dm_mask.shape) # array to fill with actuator solutions
     E_ab_vec = xp.zeros((2*Nmask))
     for i in range(num_iterations):
@@ -205,6 +208,7 @@ def run(efc_data,
         efc_data['efields'].append(copy.copy(E_ab))
         efc_data['commands'].append(copy.copy(total_command))
         efc_data['del_commands'].append(copy.copy(del_command))
+        efc_data['reg_conds'].append(copy.copy(reg_cond))
 
         if plot_current: 
             if not plot_all: clear_output(wait=True)

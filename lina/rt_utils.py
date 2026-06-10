@@ -11,6 +11,9 @@ import time
 import threading
 import pwd, grp
 
+import multiprocessing
+import threading
+
 try:
     import magpyx
     from magpyx.utils import ImageStream
@@ -125,10 +128,6 @@ def read_telem_data(data_fnames, absolute=False):
         data_times = data_times - start_time
 
     return data, data_times
-
-    
-import multiprocessing
-import threading
 
 class ContinuousProcess():
 
