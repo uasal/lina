@@ -117,40 +117,6 @@ def generate_wfe(
     return wfe_amp*circ, wfe_opd*circ
 
 def generate_freqs(
-        Nf=2**18+1, 
-        f_min=0, 
-        f_max=1000,
-        return_np=False,
-    ):
-    """_summary_
-
-    Parameters
-    ----------
-    Nf : Number of samples for the frequency range, optional
-         must be supplied as a power of 2 plus 1, by default 2**18+1
-    f_min : _type_, optional
-        _description_, by default 0*u.Hz
-    f_max : _type_, optional
-        _description_, by default 100*u.Hz
-
-    Returns
-    -------
-    _type_
-        _description_
-    """
-    # if bin(Nf-1).count('1')!=1: 
-        # raise ValueError('Must supply number of samples to be a power of 2 plus 1. ')
-    del_f = (f_max - f_min)/Nf
-    # freqs = xp.arange(f_min, f_max, del_f)
-    freqs = xp.linspace(f_min, f_max, Nf)
-    Nt = 2*(Nf-1)
-    del_t = 1/(2*f_max)
-    times = xp.linspace(0, (Nt-1)*del_t, Nt)
-    if return_np:
-        return ensure_np_array(freqs), ensure_np_array(times)
-    return freqs, times
-
-def generate_freqs(
         delt = 0.1e-3,
         tmax = 10.0,
         verbose=False,
@@ -186,7 +152,7 @@ def roll_psd(
 
     if verbose: 
         psd_rms = np.sqrt(scipy.integrate.simpson(ensure_np_array(psd), x=ensure_np_array(freqs)))
-        print(f'\tRMS of generated knee PSD: {psd_rms:.3e}')
+        print(f'\tRMS of generated roll PSD: {psd_rms:.3e}')
 
     return psd
 
