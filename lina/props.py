@@ -184,29 +184,6 @@ def mft_forward(
             
     """
     N = wavefront.shape[0]
-    # dx = 1.0 / npix
-    # if pp_centering=='even':
-    #     Xs = (xp.arange(N, dtype=float) - (N / 2) + 1/2) * dx
-    # elif pp_centering=='odd':
-    #     Xs = (xp.arange(N, dtype=float) - (N / 2)) * dx
-
-    # du = psf_pixelscale_lamD
-    # if fp_centering=='odd':
-    #     Us = (xp.arange(npsf, dtype=float) - npsf / 2) * du
-    # elif fp_centering=='even':
-    #     Us = (xp.arange(npsf, dtype=float) - npsf / 2 + 1/2) * du
-
-    # xu = xp.outer(Us, Xs)
-    # vy = xp.outer(Xs, Us)
-
-    # if convention=='-':
-    #     My = xp.exp(-1j*2*np.pi*vy) 
-    #     Mx = xp.exp(-1j*2*np.pi*xu)
-    # else:
-    #     My = xp.exp(1j*2*np.pi*vy) 
-    #     Mx = xp.exp(1j*2*np.pi*xu)
-
-    # norm_coeff = psf_pixelscale_lamD/npix
 
     Mx, My, norm_coeff = make_mft_forward_matrices(
         N, 
@@ -323,29 +300,6 @@ def mft_reverse(
             The Fourier Transform of the input wavefront. 
     """
     npsf = fpwf.shape[0]
-    # du = psf_pixelscale_lamD
-    # if fp_centering=='odd':
-    #     Us = (xp.arange(npsf, dtype=float) - npsf / 2) * du
-    # elif fp_centering=='even':
-    #     Us = (xp.arange(npsf, dtype=float) - npsf / 2 + 1/2) * du
-
-    # dx = 1.0 / npix
-    # if pp_centering=='even':
-    #     Xs = (xp.arange(N, dtype=float) - (N / 2) + 1/2) * dx
-    # elif pp_centering=='odd':
-    #     Xs = (xp.arange(N, dtype=float) - (N / 2)) * dx
-
-    # ux = xp.outer(Xs, Us)
-    # yv = xp.outer(Us, Xs)
-
-    # if convention=='+':
-    #     My = xp.exp(1j*2*np.pi*yv) 
-    #     Mx = xp.exp(1j*2*np.pi*ux)
-    # else:
-    #     My = xp.exp(-1j*2*np.pi*yv)
-    #     Mx = xp.exp(-1j*2*np.pi*ux)
-
-    # norm_coeff = psf_pixelscale_lamD/npix
     
     Mx, My, norm_coeff = make_mft_reverse_matrices(
         npsf, 
