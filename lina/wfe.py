@@ -50,13 +50,13 @@ def mn_to_fringe_index(m,n):
 def generate_opd(
         npix=1000, 
         oversample=1, 
-        wavelength=500*u.nm,
+        wavelength=500e-9,
+        diam=10*u.mm,
         slope=2.5, 
         seed=1234, 
         rms=10, 
         remove_modes=3, # defaults to removing piston, tip, and tilt
     ):
-    diam = 10*u.mm
     wf = poppy.FresnelWavefront(beam_radius=diam/2, npix=npix, oversample=oversample, wavelength=wavelength)
     wfe_opd = poppy.StatisticalPSDWFE(index=slope, wfe=rms, radius=diam/2, seed=seed).get_opd(wf)
     circ = poppy.CircularAperture(radius=diam/2).get_transmission(wf)
@@ -77,19 +77,25 @@ def generate_opd(
 def generate_wfe(
         npix=1000, 
         oversample=1, 
-        wavelength=500*u.nm,
+        wavelength=500e-9,
+        diam=10e-3,
         opd_index=2.5, 
         amp_index=2.5, 
         opd_seed=1234, 
         amp_seed=12345,
-        opd_rms=10*u.nm, 
+        opd_rms=10e-9, 
         amp_rms=0.05,
         remove_opd_modes=3,
         remove_amp_modes=3, # defaults to removing piston, tip, and tilt
     ):
-    diam = 10*u.mm
+    
+    if not isinstance(wavelength, u.Quantity): wavelength = wavelength*u.m
+    if not isinstance(diam, u.Quantity): diam = diam*u.m
+    if not isinstance(opd_rms, u.Quantity): opd_rms = opd_rms*u.m
+
     opd_seed = xp.uint64(opd_seed)
     amp_seed = xp.uint64(amp_seed)
+
     wf = poppy.FresnelWavefront(beam_radius=diam/2, npix=npix, oversample=oversample, wavelength=wavelength)
     wfe_amp = poppy.StatisticalPSDWFE(index=amp_index, wfe=amp_rms*u.nm, radius=diam/2, seed=amp_seed).get_opd(wf)
     wfe_opd = poppy.StatisticalPSDWFE(index=opd_index, wfe=opd_rms, radius=diam/2, seed=opd_seed).get_opd(wf)
