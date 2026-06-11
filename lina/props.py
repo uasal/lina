@@ -184,29 +184,6 @@ def mft_forward(
             
     """
     N = wavefront.shape[0]
-    # dx = 1.0 / npix
-    # if pp_centering=='even':
-    #     Xs = (xp.arange(N, dtype=float) - (N / 2) + 1/2) * dx
-    # elif pp_centering=='odd':
-    #     Xs = (xp.arange(N, dtype=float) - (N / 2)) * dx
-
-    # du = psf_pixelscale_lamD
-    # if fp_centering=='odd':
-    #     Us = (xp.arange(npsf, dtype=float) - npsf / 2) * du
-    # elif fp_centering=='even':
-    #     Us = (xp.arange(npsf, dtype=float) - npsf / 2 + 1/2) * du
-
-    # xu = xp.outer(Us, Xs)
-    # vy = xp.outer(Xs, Us)
-
-    # if convention=='-':
-    #     My = xp.exp(-1j*2*np.pi*vy) 
-    #     Mx = xp.exp(-1j*2*np.pi*xu)
-    # else:
-    #     My = xp.exp(1j*2*np.pi*vy) 
-    #     Mx = xp.exp(1j*2*np.pi*xu)
-
-    # norm_coeff = psf_pixelscale_lamD/npix
 
     Mx, My, norm_coeff = make_mft_forward_matrices(
         N, 
@@ -323,29 +300,6 @@ def mft_reverse(
             The Fourier Transform of the input wavefront. 
     """
     npsf = fpwf.shape[0]
-    # du = psf_pixelscale_lamD
-    # if fp_centering=='odd':
-    #     Us = (xp.arange(npsf, dtype=float) - npsf / 2) * du
-    # elif fp_centering=='even':
-    #     Us = (xp.arange(npsf, dtype=float) - npsf / 2 + 1/2) * du
-
-    # dx = 1.0 / npix
-    # if pp_centering=='even':
-    #     Xs = (xp.arange(N, dtype=float) - (N / 2) + 1/2) * dx
-    # elif pp_centering=='odd':
-    #     Xs = (xp.arange(N, dtype=float) - (N / 2)) * dx
-
-    # ux = xp.outer(Xs, Us)
-    # yv = xp.outer(Us, Xs)
-
-    # if convention=='+':
-    #     My = xp.exp(1j*2*np.pi*yv) 
-    #     Mx = xp.exp(1j*2*np.pi*ux)
-    # else:
-    #     My = xp.exp(-1j*2*np.pi*yv)
-    #     Mx = xp.exp(-1j*2*np.pi*ux)
-
-    # norm_coeff = psf_pixelscale_lamD/npix
     
     Mx, My, norm_coeff = make_mft_reverse_matrices(
         npsf, 
@@ -431,6 +385,47 @@ def make_vortex_phase_mask(
     phasor = xp.exp(1j*charge*th)
     
     return phasor
+
+def get_scaled_coords(N, scale, center=True, shift=True):
+    if center:
+        cen = (N-1)/2.0
+    else:
+        cen = 0
+        
+    if shift:
+        shiftfunc = xp.fft.fftshift
+    else:
+        shiftfunc = lambda x: x
+    cy, cx = (shiftfunc(xp.indices((N,N))) - cen) * scale
+    r = xp.sqrt(cy**2 + cx**2)
+    return [cy, cx, r]
+
+def get_dz_fresnel_tf(dz, N, wavelength, fnum):
+    """
+    Get the Fresnel transfer function for a shift dz from focus. This transfer function
+    is a form of defocus that will be applied to the pupil plane wavefront to compute a 
+    defocused focal plane wavefront. 
+
+    Args:
+        dz (float): 
+            The shift from nominal focus in units of meters. 
+        N (int): 
+            The number of pixels across the array to compute the transfer function for. 
+        wavelength (float):
+            The wavelength to compute the transfer function for in units of meters. 
+        fnum (float): 
+            The F-number of the beam to the focal plane. 
+
+    Returns:
+        ndarray: 
+            The transfer function as a complex phasor. 
+    """
+
+    df = 1.0 / (N * wavelength * fnum)
+    rp = get_scaled_coords(N,df, shift=False)[-1]
+    return xp.exp(-1j*np.pi*dz*wavelength*(rp**2))
+
+
 
 
 

@@ -50,13 +50,13 @@ def mn_to_fringe_index(m,n):
 def generate_opd(
         npix=1000, 
         oversample=1, 
-        wavelength=500*u.nm,
+        wavelength=500e-9,
+        diam=10*u.mm,
         slope=2.5, 
         seed=1234, 
         rms=10, 
         remove_modes=3, # defaults to removing piston, tip, and tilt
     ):
-    diam = 10*u.mm
     wf = poppy.FresnelWavefront(beam_radius=diam/2, npix=npix, oversample=oversample, wavelength=wavelength)
     wfe_opd = poppy.StatisticalPSDWFE(index=slope, wfe=rms, radius=diam/2, seed=seed).get_opd(wf)
     circ = poppy.CircularAperture(radius=diam/2).get_transmission(wf)
@@ -77,19 +77,25 @@ def generate_opd(
 def generate_wfe(
         npix=1000, 
         oversample=1, 
-        wavelength=500*u.nm,
+        wavelength=500e-9,
+        diam=10e-3,
         opd_index=2.5, 
         amp_index=2.5, 
         opd_seed=1234, 
         amp_seed=12345,
-        opd_rms=10*u.nm, 
+        opd_rms=10e-9, 
         amp_rms=0.05,
         remove_opd_modes=3,
         remove_amp_modes=3, # defaults to removing piston, tip, and tilt
     ):
-    diam = 10*u.mm
+    
+    if not isinstance(wavelength, u.Quantity): wavelength = wavelength*u.m
+    if not isinstance(diam, u.Quantity): diam = diam*u.m
+    if not isinstance(opd_rms, u.Quantity): opd_rms = opd_rms*u.m
+
     opd_seed = xp.uint64(opd_seed)
     amp_seed = xp.uint64(amp_seed)
+
     wf = poppy.FresnelWavefront(beam_radius=diam/2, npix=npix, oversample=oversample, wavelength=wavelength)
     wfe_amp = poppy.StatisticalPSDWFE(index=amp_index, wfe=amp_rms*u.nm, radius=diam/2, seed=amp_seed).get_opd(wf)
     wfe_opd = poppy.StatisticalPSDWFE(index=opd_index, wfe=opd_rms, radius=diam/2, seed=opd_seed).get_opd(wf)
@@ -115,40 +121,6 @@ def generate_wfe(
     wfe_opd *= opd_rms.to_value(u.m)/wfe_rms
 
     return wfe_amp*circ, wfe_opd*circ
-
-def generate_freqs(
-        Nf=2**18+1, 
-        f_min=0, 
-        f_max=1000,
-        return_np=False,
-    ):
-    """_summary_
-
-    Parameters
-    ----------
-    Nf : Number of samples for the frequency range, optional
-         must be supplied as a power of 2 plus 1, by default 2**18+1
-    f_min : _type_, optional
-        _description_, by default 0*u.Hz
-    f_max : _type_, optional
-        _description_, by default 100*u.Hz
-
-    Returns
-    -------
-    _type_
-        _description_
-    """
-    # if bin(Nf-1).count('1')!=1: 
-        # raise ValueError('Must supply number of samples to be a power of 2 plus 1. ')
-    del_f = (f_max - f_min)/Nf
-    # freqs = xp.arange(f_min, f_max, del_f)
-    freqs = xp.linspace(f_min, f_max, Nf)
-    Nt = 2*(Nf-1)
-    del_t = 1/(2*f_max)
-    times = xp.linspace(0, (Nt-1)*del_t, Nt)
-    if return_np:
-        return ensure_np_array(freqs), ensure_np_array(times)
-    return freqs, times
 
 def generate_freqs(
         delt = 0.1e-3,
@@ -186,7 +158,7 @@ def roll_psd(
 
     if verbose: 
         psd_rms = np.sqrt(scipy.integrate.simpson(ensure_np_array(psd), x=ensure_np_array(freqs)))
-        print(f'\tRMS of generated knee PSD: {psd_rms:.3e}')
+        print(f'\tRMS of generated roll PSD: {psd_rms:.3e}')
 
     return psd
 
@@ -243,7 +215,19 @@ def generate_time_series(
     
     return time_series, times
 
-def compute_cumulative_psd(freqs, psd):
+def compute_psd(
+        time_series,
+        sampling, 
+        nperseg=4096,
+    ):
+
+    psd_freqs, psd = scipy.signal.welch(time_series, 1/sampling, nperseg=nperseg)
+    return psd, psd_freqs
+
+def compute_cumulative_psd(
+        freqs, 
+        psd
+    ):
     cumulative_psd = []
     for i in range(1,len(freqs)):
         psd_domain = freqs[0:i]
