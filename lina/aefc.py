@@ -52,7 +52,7 @@ def run(
         num_iterations=3, 
         gain=1.0, 
         leakage=0.0, 
-        fp_shift=None,
+        # fp_shift=None,
         normalize_metric_fun=None,
         normalize_metric_params=None,
         verbose=False,
@@ -60,6 +60,66 @@ def run(
         plot_all=False,
         vmin=1e-10,  
     ):
+    """_summary_
+
+    Args:
+        aefc_data (dict): 
+            Dictionary of all the corresponding data for this particular aEFC run. Dictionary contains 
+            history of all previously obtained measurements and DM commands. 
+        take_im_fun (callable): 
+            Function that returns the image of the coronagraph.  
+        take_im_params (dict): 
+            Dictionary of additional parameters needed for the take_im_fun method.
+        set_dm_fun (callable): 
+            Function that applies the DM command to the coronagraph. First argument of 
+            this function must be the DM command that will be applied. 
+        set_dm_params (dict): 
+            Dictionary of additional parameters needed for the set_dm_fun method.
+        estimate_ef_fun (callable): 
+            The function used to estimate the electric field on each iteration of aEFC. Typically this
+            will be PWP or SCC. 
+        estimate_ef_params (dict): 
+            Dictionary of additional parameters needed for the estimate_ef_fun method. 
+        M (control_models.MODEL): 
+            The control model instance used to compute the new DM command. 
+        val_and_grad (callable): 
+            Function that returns the EFC cost-function value and gradient with respect
+            to the DM actuators. Used to perform the optimization. 
+        wfs_mask (ndarray):
+            Binary mask defining the region in the focal plane to control.
+        dm_mask (ndarray): 
+            Binary array definiing the active actuators of the DM. 
+        reg_cond (float, optional): 
+            Regularization value for the EFC cost-function. Defaults to 1e-2.
+        bfgs_tol (float, optional): 
+            Tolerance for the L-BFGS-B optimization. Once the difference between two consecutive 
+            optimization iterations is less than this value, optimization is completed. Defaults to 1e-3.
+        bfgs_opts (dict, optional): 
+            Additional dictionary of options for L-BFGS-B optimization. Defaults to None.
+        num_iterations (int, optional): 
+            Number of iterations to perfomr with given parameters. Defaults to 3.
+        gain (float, optional): 
+            Loop gain applied to each computed DM command. Defaults to 1.0.
+        leakage (float, optional): 
+            Leakage specifiy how much of the previous commands to remove. Defaults to 0.0.
+        normalize_metric_fun (callable, optional): 
+            Function that normalizes the metric image used to evaluate current contrast. If take_im_fun
+            automatically returns normalized intensity images, this is not needed. Defaults to None.
+        normalize_metric_params (dict, optional): 
+            Dictionary of additional parameters needed for the normalize_metric_fun method. Defaults to None.
+        verbose (bool, optional): 
+            Option specifying if the control model propagations should use print information. Defaults to False.
+        plot_current (bool, optional): 
+            Plots the results of the current iteration. Defaults to True.
+        plot_all (bool, optional): 
+            Plots the results of all iterations performed during this round of iEFC. Defaults to False.
+        vmin (float, optional): 
+            Minimum contrast value to display on the plots. Defaults to 1e-9.
+
+    Returns:
+        dict: 
+            Dictionary of aEFC data appended with arrays from most recent iterations. 
+    """
 
     Nact = dm_mask.shape[0]
 

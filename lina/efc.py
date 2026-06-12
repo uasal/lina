@@ -164,6 +164,14 @@ def run(efc_data,
             Loop gain applied to each computed DM command. Defaults to 1.0.
         leakage (float, optional): 
             Leakage specifiy how much of the previous commands to remove. Defaults to 0.0.
+        plot_current (bool, optional): 
+            Plots the results of the current iteration. Defaults to True.
+        plot_all (bool, optional): 
+            Plots the results of all iterations performed during this round of iEFC. Defaults to False.
+        vmin (float, optional): 
+            Minimum contrast value to display on the plots. Defaults to 1e-10.
+        vmax (float, optional): 
+            Maximum contrast value to display on the plots. Defaults to 1e-5.
 
     Returns:
         efc_data (dict): 
