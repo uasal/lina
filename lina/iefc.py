@@ -1,5 +1,5 @@
 from .math_module import xp, xcipy, ensure_np_array
-from lina import utils, coro_utils
+from lina import utils
 
 import numpy as np
 import astropy.units as u
@@ -362,7 +362,7 @@ def run(iefc_data,
         print(f"Measuring dark hole state ...")
         metric_im = take_im_fun(**take_im_params)
         metric_im_ni = metric_im if normalize_metric_fun is None else normalize_metric_fun(metric_im, **normalize_metric_params)
-        contrast = coro_utils.compute_contrast(metric_im_ni, wfs_mask)
+        contrast = utils.compute_contrast(metric_im_ni, wfs_mask)
 
         iefc_data['raw_images'].append(copy.copy(metric_im))
         iefc_data['ni_images'].append(copy.copy(metric_im_ni))

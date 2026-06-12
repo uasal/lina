@@ -1,5 +1,5 @@
 from .math_module import xp, xcipy, ensure_np_array
-from lina import utils, coro_utils, pwp
+from lina import utils, pwp
 
 import numpy as np
 import time
@@ -198,7 +198,7 @@ def run(efc_data,
 
         metric_im = take_im_fun(**take_im_params)
         metric_im_ni = metric_im if normalize_metric_fun is None else normalize_metric_fun(metric_im, **normalize_metric_params)
-        contrast = coro_utils.compute_contrast(metric_im_ni, wfs_mask)
+        contrast = utils.compute_contrast(metric_im_ni, wfs_mask)
 
         print(f'\tContrast = {contrast:.3e}.')
 

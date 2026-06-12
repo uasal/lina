@@ -1,5 +1,5 @@
 from .math_module import xp, xcipy, ensure_np_array
-from lina import utils, coro_utils
+from lina import utils
 
 import numpy as np
 import scipy

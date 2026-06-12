@@ -450,6 +450,18 @@ def create_annular_mask(
 
     return mask
 
+def compute_contrast(ni_im, mask, verbose=True):
+    ni_im_masked = ni_im[mask] # select pixels in desired mask
+    gtz_mask = ni_im_masked>0
+    if verbose:
+        Nmask = mask.sum()
+        Npix_gtz = gtz_mask.sum()
+        ratio = Npix_gtz / Nmask
+        print(f'\tRatio of pixels greater than zero versus total pixels: {Npix_gtz} / {Nmask} = {ratio:.2f}')
+    ni_im_gtz = ni_im_masked[gtz_mask] # select values greater than zero
+    contrast = np.mean(ni_im_gtz)
+    return contrast
+
 def get_radial_dist(shape, scaleyx=(1.0, 1.0), cenyx=None):
     '''
     Compute the radial separation of each pixel
