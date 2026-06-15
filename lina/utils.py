@@ -435,7 +435,7 @@ def create_annular_mask(
         x = xp.linspace(-N/2, N/2-1, N) * pixelscale
     x,y = xp.meshgrid(x,x)
     r = xp.hypot(x, y)
-    mask = (r > irad) * (r < orad)
+    mask = (r >= irad) * (r < orad)
     if edge is not None: mask *= (x > edge)
     
     mask = xcipy.ndimage.rotate(mask, rotation, reshape=False, order=0)
