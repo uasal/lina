@@ -19,7 +19,8 @@ dependencies = [
     "scipy",
     "astropy",
     "scikit-image",
-    "poppy @ git+ssh://git@github.com/spacetelescope/poppy.git",
+    # "poppy @ git+ssh://git@github.com/spacetelescope/poppy.git",
+    "poppy @ git+ssh://git@github.com/kvangorkom/poppy.git@vector",
 ]
 
 [project.urls]
