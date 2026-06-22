@@ -199,7 +199,7 @@ def generate_time_series(
     amplitude_spectrum[int(Ntime_samps/2):] = amplitude_spectrum[int(Ntime_samps/2):] * xp.exp(-2j*phases[::-1])
 
     time_series = xp.fft.ifft(amplitude_spectrum)
-    assert xp.sum(time_series.imag)<xp.sum(time_series.real)/1e12
+    assert xp.sum(time_series.imag) < xp.sum(time_series.real)/1e12
     time_series = time_series.real
 
     if verbose:
@@ -218,24 +218,27 @@ def generate_time_series(
 def compute_psd(
         time_series,
         sampling, 
-        nperseg=4096,
+        welch_params={},
     ):
 
-    psd_freqs, psd = scipy.signal.welch(time_series, 1/sampling, nperseg=nperseg)
+    # psd_freqs, psd = scipy.signal.welch(ensure_np_array(time_series), 1/sampling, nperseg=nperseg)
+    psd_freqs, psd = xcipy.signal.welch(time_series, 1/sampling, **welch_params)
     return psd, psd_freqs
 
 def compute_cumulative_psd(
         freqs, 
         psd
     ):
+
     cumulative_psd = []
     for i in range(1,len(freqs)):
-        psd_domain = freqs[0:i]
-        psd_range = psd[0:i]
-        psd_integral = scipy.integrate.simpson(psd_range, x=psd_domain)
+        psd_domain = freqs[:i]
+        psd_range = psd[:i]
+        psd_integral = scipy.integrate.simpson(ensure_np_array(psd_range), x=ensure_np_array(psd_domain))
         cumulative_psd.append(psd_integral)
 
-    cumulative_psd = np.sqrt(np.array(cumulative_psd))
+    # cumulative_psd = np.array(cumulative_psd)
+    cumulative_psd = xp.sqrt(xp.array(cumulative_psd))
     return cumulative_psd, freqs[1:]
 
 
@@ -245,7 +248,7 @@ def plot_psd(freqs, psd, plot_integral=False):
     plt.yscale("log")
     plt.xscale("log")
     plt.grid()
-    plt.xlabel(freqs.unit)
+    # plt.xlabel(freqs.unit)
     plt.show()
 
     if plot_integral:
