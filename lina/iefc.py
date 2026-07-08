@@ -20,6 +20,7 @@ def measure_probe_response(
         probe_modes,
         probe_amplitude, 
         base_command=None,
+        set_base_after=False,
         normalize_diff_fun=None,
         normalize_diff_params=None,
         verbose=False,
@@ -63,13 +64,15 @@ def measure_probe_response(
     all_ims = []
     probed_responses = []
     for i in range(Nprobes):
-        if verbose:
-            print(f'\tMeasuring response of probe {i+1}/{Nprobes}.')
+        # if verbose:
+        #     print(f'\tMeasuring response of probe {i+1}/{Nprobes}.')
         probe = probe_amplitude * probe_modes[i]
 
+        if verbose: print(f'\tMeasuring image of +probe {i+1}/{Nprobes}.')
         set_dm_fun(base_command + probe, **set_dm_params)
         im_pos = take_im_fun(**take_im_params)
 
+        if verbose: print(f'\tMeasuring image of -probe {i+1}/{Nprobes}.')
         set_dm_fun(base_command - probe, **set_dm_params)
         im_neg = take_im_fun(**take_im_params)
 
@@ -88,7 +91,7 @@ def measure_probe_response(
 
     all_ims = xp.array(all_ims)
     probed_responses = xp.array(probed_responses)
-    set_dm_fun(base_command, **set_dm_params)
+    if set_base_after: set_dm_fun(base_command, **set_dm_params)
     
     return probed_responses
     
@@ -346,6 +349,7 @@ def run(iefc_data,
             probe_modes,
             probe_amplitude, 
             base_command=total_command,
+            set_base_after=False,
             normalize_diff_fun=normalize_diff_fun,
             normalize_diff_params=normalize_diff_params,
             verbose=verbose,
