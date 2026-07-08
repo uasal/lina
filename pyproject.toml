@@ -19,7 +19,9 @@ dependencies = [
     "scipy",
     "astropy",
     "scikit-image",
-    "poppy @ git+ssh://git@github.com/spacetelescope/poppy.git",
+    "poppy",
+    # "poppy @ git+ssh://git@github.com/spacetelescope/poppy.git",
+    # "poppy @ git+ssh://git@github.com/kvangorkom/poppy.git@vector",
 ]
 
 [project.urls]
@@ -41,15 +43,19 @@ dev = [
 
 [dependency-groups]
 magaox = [
-    # "magpyx @ file:///opt/MagAOX/source/magpyx",
     "magpyx @ git+ssh://git@github.com/magao-x/magpyx.git",
-    # "purepyindi @ file:///opt/MagAOX/source/purepyindi",
     "purepyindi @ git+ssh://git@github.com/magao-x/purepyindi.git",
-    # "purepyindi2 @ file:///opt/MagAOX/source/purepyindi2",
     "purepyindi2 @ git+ssh://git@github.com/xwcl/purepyindi2.git",
-    # "ImageStreamIOWrap @ file:///opt/MagAOX/source/milk/src/ImageStreamIO",
     # "ImageStreamIOWrap @ git+ssh://git@github.com/jaredmales/ImageStreamIO.git",
-    "ImageStreamIOWrap @ git+ssh://git@github.com/magao-x/ImageStreamIO.git",
+    # "ImageStreamIOWrap @ git+ssh://git@github.com/magao-x/ImageStreamIO.git",
+    "ImageStreamIOWrap @ git+https://github.com/milk-org/ImageStreamIO.git",
+]
+
+magaox-source = [
+    "magpyx @ file:///opt/MagAOX/source/magpyx",
+    "purepyindi @ file:///opt/MagAOX/source/purepyindi",
+    "purepyindi2 @ file:///opt/MagAOX/source/purepyindi2",
+    "ImageStreamIOWrap @ file:///opt/MagAOX/source/milk/src/ImageStreamIO",
 ]
 
 [build-system]

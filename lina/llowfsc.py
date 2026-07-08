@@ -16,22 +16,45 @@ def acquire_ref(
         take_im_fun,
         take_im_params,
         wfs_mask,
-        camlo_dark=0.0,
+        dark_im=0.0,
         flux_norm=True,
     ):
+    """
+    Acquire the reference image for LLOWFSC. 
+
+    Args:
+        take_im_fun (callable): 
+            Function that returns the LLOWFSC camera image. 
+        take_im_params (dict):
+            Dictionary of additional parameters needed for the take_im_fun method
+        wfs_mask (ndarray): 
+            Binary mask defining the region of the interest on the camera.
+        dark_im (float, optional): 
+            Dark image to subtract from the reference image. Defaults to 0.0.
+        flux_norm (bool, optional): 
+            Normalize the image by the total counts within the wfs_mask ROI. Defaults to True.
+
+    Returns:
+        tuple: 
+            Tuple containing the reference image as a 2D array 
+            and the flux normalization coefficient
+
+    """
 
     camlo_ref_im = take_im_fun(**take_im_params)
 
-    camlo_ref_im_ds = camlo_ref_im - camlo_dark
+    camlo_ref_im_ds = camlo_ref_im - dark_im
 
     camlo_ref_im_ds *= wfs_mask
 
     if flux_norm:
         flux_norm_coeff = camlo_ref_im_ds[wfs_mask].sum()
-        flux_norm_ref_im = camlo_ref_im_ds / flux_norm_coeff
-        return flux_norm_ref_im, flux_norm_coeff
-    
-    return camlo_ref_im_ds
+        ref_im = camlo_ref_im_ds / flux_norm_coeff
+    else:
+        flux_norm_coeff = 1.0
+        ref_im = camlo_ref_im_ds
+
+    return ref_im, flux_norm_coeff
 
 def calibrate_dm_modes(
         take_im_fun,
@@ -45,8 +68,43 @@ def calibrate_dm_modes(
         flux_norm_coeff=None,
         include_factor_2=False,
         plot=False,
-        npix=None,
+        Nplot=None,
     ):
+
+    """
+    Method to calibrate LLOWFSC using central differences of a given modal basis. 
+    The positive and negative of each mode is applied and the response is the difference
+    image normalized by 2*amp. 
+
+    Args:
+        take_im_fun (callable): 
+            Function that returns the LLOWFSC camera image. 
+        take_im_params (dict):
+            Dictionary of additional parameters needed for the take_im_fun method
+        set_dm_fun (callable): 
+            Function that applies the DM command to the coronagraph. First argument of 
+            this function must be the DM command that will be applied. 
+        set_dm_params (dict): 
+            Dictionary of additional parameters needed for the set_dm_fun method.
+        dm_modes (ndarray):
+            Data cube containing the DM modes that will be calibrated. Shape must be 
+            Nmodes X Nact X Nact.
+        wfs_mask (ndarray):
+            Binary mask defining the region of the interest on the camera.
+        amp (float, optional):
+            Amplitude to apply to each mode during calibration in meters. Defaults to 2e-9.
+        base_command (ndarray, optional):
+        flux_norm_coeff (float, optional):
+        include_factor_of_2 (bool, optional):
+        plot (bool, optional):
+        Nplot (float, optional):
+
+    Returns:
+        tuple: 
+            Tuple containing the response matrix along with the full response cube. The cube 
+            contains each individual difference image before it has been vectorized using 
+            the wfs_mask and is easier to visualize responses. 
+    """
     
     Nmask = int(wfs_mask.sum())
     Nmodes = dm_modes.shape[0]
@@ -80,7 +138,7 @@ def calibrate_dm_modes(
                 [dm_mode, im_pos, diff], 
                 titles=[f'Mode {i+1}', 'Positive Chop Image', 'Difference'], 
                 cmaps=['viridis'],
-                npix=[None, npix, npix]
+                npix=[None, Nplot, Nplot]
             )
         else:
             print(f"\tCalibrated mode {i+1:d}/{Nmodes:d} in {time.time()-start:.3f}s", end='')
@@ -135,6 +193,36 @@ def reconstruct(
         return_del_im=False,
     ):
 
+    """
+    Compute the modal coefficients from a given LLOWFSC camera image. 
+
+    Args:
+        camlo_im (ndarray): 
+            2D array of LLOWFSC camera image. 
+        ref_im (ndarray):
+            2D array of the reference image. 
+        wfs_mask (ndarray):
+            Binary mask defining the region of the interest on the camera.
+        control_matrix (ndarray):
+            Pseudo-inverted response matrix. Also known as reconstructor sometimes. 
+        dark_im (float, optional): 
+            Dark image to subtract from the CAMLO image. Defaults to 0.0.
+        modes (tuple, optional):
+            Tuple indicating which modal coefficients to reconstruct. Defaults to (0,10), 
+            meaning the first 10 modal coefficients will be computed and returned. 
+        flux_norm (bool, optional):
+            Normalize the image by the total counts within the wfs_mask ROI. Defaults to True.
+        return_del_im (bool, optional):
+            Return the difference image along with the modal coefficients. 
+
+    Returns:
+        ndarray: 
+            Vector of modal coefficients. 
+
+            Note: If return_del_im is True, then a tuple will be returned containing 
+            the modal coeffciients followed by the difference image. 
+    """
+
     camlo_im_dark_sub = camlo_im - dark_im
     camlo_im_flux_norm = camlo_im_dark_sub / camlo_im_dark_sub[wfs_mask].sum() if flux_norm else camlo_im_dark_sub
     del_im = camlo_im_flux_norm - ref_im
@@ -143,6 +231,7 @@ def reconstruct(
 
     if return_del_im:
         return coeff, del_im*wfs_mask
+    
     return coeff
 
 def run(
@@ -164,6 +253,54 @@ def run(
         get_ffo=None,
         get_ffo_params={},
     ):
+
+    """
+    Run a single iteration of LLOWFSC. 
+
+    Args:
+        take_im_fun (callable): 
+            Function that returns the LLOWFSC camera image. 
+        take_im_params (dict):
+            Dictionary of additional parameters needed for the take_im_fun method
+        set_dm_fun (callable): 
+            Function that applies the DM command to the coronagraph. First argument of 
+            this function must be the DM command that will be applied. 
+        set_dm_params (dict): 
+            Dictionary of additional parameters needed for the set_dm_fun method.
+        get_dm_fun (callable): 
+            Function that reads in current DM command applied for LLOWFSC. 
+        get_dm_params (dict): 
+            Dictionary of additional parameters needed for the get_dm_fun method.
+        get_gains (callable):
+            Function to read in current gain values to use for LLOWFSC controller.
+        ref_im (ndarray):
+            2D array of the reference image. 
+        control_matrix (ndarray):
+            Pseudo-inverted response matrix. Also known as reconstructor sometimes. 
+        dm_modes (ndarray):
+            Data cube containing the DM modes that will be calibrated. Shape must be 
+            Nmodes X Nact X Nact.
+        wfs_mask (ndarray): 
+            Binary mask defining the region of the interest on the camera.
+        dark_im (float, optional): 
+            Dark image to subtract from the reference image. Defaults to 0.0.
+        get_zpo (callable, optional):
+            Get the latest zero point offset which is applied as a correction to 
+            the reference image so that desired DM commands are not 
+            corrected by LLOWFSC. Defaults to None (no offset will be applied).
+        get_zpo_params (dict, optional):
+            Dictionary of parameters needed for get_zpo. 
+        get_ffo (callable, optional):
+            Get the latest feed forward offset which is applied as a correction to 
+            the computed modal coefficients so that desired DM commands are not 
+            corrected by LLOWFSC. Defaults to None (no offset will be applied).
+        get_ffo_params (dict, optional):
+            Dictionary of parameters needed for get_ffo.
+
+    Note that get_zpo and get_ffo can be mathematically equivalent, but get_ffo is more 
+    computationally efficient while get_zpo has the added benefit of visualizing the offset. 
+
+    """
 
     camlo_im = take_im_fun(**take_im_params)
 
@@ -195,11 +332,36 @@ def compute_zpo(
         dm_modal_matrix,
         ZPO_STREAM,
     ):
+
+    """
+    Compute the zero point offset for multiple DM commands specified 
+    by providing the ImageStreams of the desired DM channels as a list. 
+    The ZPO is returned as an array but also written to an ImageStream of its
+    own to be visualized in real time. 
+
+    Returns:
+        DM_STREAMS (list): 
+            List of ImageStream objects corresponding the DM channels we want
+            offsets to be computed for. 
+        dm_mask (ndarray): 
+            binary mask specifying the active actuators of the DM array. 
+        wfs_mask (ndarray):
+            Binary mask defining the region of the interest on the camera.
+        response_matrix (ndarray):
+            2D array containing the response matrix from the LLOWFSC calibration. 
+        dm_modal_matrix (ndarray):
+            2D array containing the vectorized DM modes that the ZPO will
+            be computed for. Must be of the shape Nmodes x Nacts. 
+        ZPO_STREAM:
+            ImageStream object. 
+    """
+
     zpo = np.zeros((wfs_mask.shape[0], wfs_mask.shape[1]))
     for i in range(len(DM_STREAMS)):
         zpo[wfs_mask] += response_matrix.dot( dm_modal_matrix.dot(DM_STREAMS[i].grab_latest()[dm_mask]) )
 
     ZPO_STREAM.write(zpo)
+
     return zpo
 
 

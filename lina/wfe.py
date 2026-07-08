@@ -199,7 +199,7 @@ def generate_time_series(
     amplitude_spectrum[int(Ntime_samps/2):] = amplitude_spectrum[int(Ntime_samps/2):] * xp.exp(-2j*phases[::-1])
 
     time_series = xp.fft.ifft(amplitude_spectrum)
-    assert xp.sum(time_series.imag)<xp.sum(time_series.real)/1e12
+    assert xp.sum(time_series.imag) < xp.sum(time_series.real)/1e12
     time_series = time_series.real
 
     if verbose:
@@ -218,108 +218,28 @@ def generate_time_series(
 def compute_psd(
         time_series,
         sampling, 
-        nperseg=4096,
+        welch_params={},
     ):
 
-    psd_freqs, psd = scipy.signal.welch(time_series, 1/sampling, nperseg=nperseg)
+    # psd_freqs, psd = scipy.signal.welch(ensure_np_array(time_series), 1/sampling, nperseg=nperseg)
+    psd_freqs, psd = xcipy.signal.welch(time_series, 1/sampling, **welch_params)
     return psd, psd_freqs
 
 def compute_cumulative_psd(
         freqs, 
         psd
     ):
+
     cumulative_psd = []
     for i in range(1,len(freqs)):
-        psd_domain = freqs[0:i]
-        psd_range = psd[0:i]
-        psd_integral = scipy.integrate.simpson(psd_range, x=psd_domain)
+        psd_domain = freqs[:i]
+        psd_range = psd[:i]
+        psd_integral = scipy.integrate.simpson(ensure_np_array(psd_range), x=ensure_np_array(psd_domain))
         cumulative_psd.append(psd_integral)
 
-    cumulative_psd = np.sqrt(np.array(cumulative_psd))
+    # cumulative_psd = np.array(cumulative_psd)
+    cumulative_psd = xp.sqrt(xp.array(cumulative_psd))
     return cumulative_psd, freqs[1:]
 
-
-def plot_psd(freqs, psd, plot_integral=False):
-    plt.plot(freqs, psd)
-    plt.title(f"temporal PSD")
-    plt.yscale("log")
-    plt.xscale("log")
-    plt.grid()
-    plt.xlabel(freqs.unit)
-    plt.show()
-
-    if plot_integral:
-        Nints = 2000
-        Nf = len(freqs)
-        del_f = freqs[1]-freqs[0]
-        int_freqs = []
-        psd_int = []
-        for i in range(Nints):
-            i_psd = int(np.round(Nf/(Nints-i)))
-            int_freqs.append(freqs[i_psd-1].to_value(u.Hz))
-            psd_int.append(np.trapz(psd[:i_psd])*del_f.to_value(u.Hz))
-
-        plt.plot(int_freqs, psd_int)
-        plt.title(f"Integral of temporal PSD over frequency range")
-        plt.yscale("log")
-        plt.xscale("log")
-        plt.grid()
-        plt.xlabel(freqs.unit)
-        plt.show()
-
-def plot_time_series(times, coeff, name='Coefficients', xlims=None, ylims=None):
-    times = ensure_np_array(times)
-    coeff = ensure_np_array(coeff)
-    c_rms = np.sqrt(np.mean(np.square(coeff)))
-    plt.plot(times, coeff)
-    plt.title(f'Time series of {name}, RMS = {c_rms:.3e}')
-    plt.ylabel(f'{name} Amplitudes')
-    plt.grid()
-    plt.xlim(xlims)
-    if ylims is None: 
-        plt.ylim([-2*c_rms, 2*c_rms])
-    else:
-        plt.ylim(ylims)
-    plt.xlabel('Seconds')
-    plt.show()
-
-def plot_psd_and_time_series(
-        freqs, psd, times, coeff,
-        psd_name='PSD', 
-        psd_xlims=None, psd_ylims=None,
-        coeff_name='Coefficients', 
-        coeff_xlims=None, coeff_ylims=None,
-        coeff_xticks=None,
-        figsize=(16,9),
-        dpi=125,
-    ):
-    freqs = ensure_np_array(freqs)
-    psd = ensure_np_array(psd)
-
-    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=figsize, dpi=dpi)
-    
-    ax[0].plot(freqs,psd)
-    ax[0].set_title(f'Temporal PSD {psd_name}')
-    ax[0].set_yscale("log")
-    ax[0].set_xscale("log")
-    ax[0].set_ylabel(f'PSD Amplitude')
-    ax[0].grid()
-    ax[0].set_xlim(psd_xlims)
-    ax[0].set_ylim(psd_ylims)
-    ax[0].set_xlabel('Hz')
-
-    times = ensure_np_array(times)
-    coeff = ensure_np_array(coeff)
-    c_rms = np.sqrt(np.mean(np.square(coeff)))
-    ax[1].plot(times, coeff)
-    ax[1].set_title(f'Time series of {coeff_name}, RMS = {c_rms:.3e}')
-    ax[1].set_ylabel(f'{coeff_name} Amplitudes')
-    if coeff_xticks is not None: ax[1].set_xticks(coeff_xticks)
-    ax[1].grid()
-    ax[1].set_xlim(coeff_xlims)
-    ax[1].set_ylim(coeff_ylims)
-    ax[1].set_xlabel('Seconds')
-
-    plt.show()
 
 

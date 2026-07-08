@@ -1,5 +1,5 @@
 from .math_module import xp, xcipy, ensure_np_array
-from lina import utils, coro_utils
+from lina import utils
 
 import numpy as np
 import astropy.units as u
@@ -20,6 +20,7 @@ def measure_probe_response(
         probe_modes,
         probe_amplitude, 
         base_command=None,
+        set_base_after=False,
         normalize_diff_fun=None,
         normalize_diff_params=None,
         verbose=False,
@@ -63,13 +64,15 @@ def measure_probe_response(
     all_ims = []
     probed_responses = []
     for i in range(Nprobes):
-        if verbose:
-            print(f'\tMeasuring response of probe {i+1}/{Nprobes}.')
+        # if verbose:
+        #     print(f'\tMeasuring response of probe {i+1}/{Nprobes}.')
         probe = probe_amplitude * probe_modes[i]
 
+        if verbose: print(f'\tMeasuring image of +probe {i+1}/{Nprobes}.')
         set_dm_fun(base_command + probe, **set_dm_params)
         im_pos = take_im_fun(**take_im_params)
 
+        if verbose: print(f'\tMeasuring image of -probe {i+1}/{Nprobes}.')
         set_dm_fun(base_command - probe, **set_dm_params)
         im_neg = take_im_fun(**take_im_params)
 
@@ -88,7 +91,7 @@ def measure_probe_response(
 
     all_ims = xp.array(all_ims)
     probed_responses = xp.array(probed_responses)
-    set_dm_fun(base_command, **set_dm_params)
+    if set_base_after: set_dm_fun(base_command, **set_dm_params)
     
     return probed_responses
     
@@ -136,12 +139,12 @@ def calibrate(
             Vector of scale factors that are applied to each respective calibration mode. 
             Allows for different modes to use different calibration amplitudes to prevent
             saturation on concentrated modes but good SNR on distributed modes. Defaults to None.
-        initial_command (_type_, optional): 
+        initial_command (ndarray, optional): 
             Underlying command that the calibration modes will be added to. Defaults to None.
-        normalize_diff_fun (_type_, optional): 
+        normalize_diff_fun (callable, optional): 
             Function that normalizes the difference images of the probes. If take_im_fun
             automatically returns normalized intensity images, this is not needed. Defaults to None.
-        normalize_diff_params (_type_, optional): 
+        normalize_diff_params (dict, optional): 
             Dictionary of additional parameters needed for the normalize_diff_fun method. Defaults to None.
         plot_responses (bool, optional): 
             Plots the response maps in DM space and in WFS space. Defaults to False.
@@ -284,9 +287,11 @@ def run(iefc_data,
             this function must be the DM command that will be applied. 
         set_dm_params (dict): 
             Dictionary of additional parameters needed for the set_dm_fun method.
-        control_matrix (ndarray): 
-            Pseudo-inverted response matrix for the region of interest specified 
-            by the wfs_mask. 
+        response_matrix (ndarray): 
+            Response matrix for the region of interest specified by the wfs_mask. 
+        reg_cond (float):
+            Regularization value to perform the pseudo-inverse of the response matrix. 
+            Also known as the beta value since the beta regularization method is used here. 
         probe_modes (ndarray): 
             Cube of the DM probe modes used for the provided control matrix. 
         probe_amplitude (float): 
@@ -315,7 +320,7 @@ def run(iefc_data,
             Plots the results of the current iteration. Defaults to True.
         plot_all (bool, optional): 
             Plots the results of all iterations performed during this round of iEFC. Defaults to False.
-        vmin (_type_, optional): 
+        vmin (float, optional): 
             Minimum contrast value to display on the plots. Defaults to 1e-9.
 
     Returns:
@@ -344,6 +349,7 @@ def run(iefc_data,
             probe_modes,
             probe_amplitude, 
             base_command=total_command,
+            set_base_after=False,
             normalize_diff_fun=normalize_diff_fun,
             normalize_diff_params=normalize_diff_params,
             verbose=verbose,
@@ -360,7 +366,7 @@ def run(iefc_data,
         print(f"Measuring dark hole state ...")
         metric_im = take_im_fun(**take_im_params)
         metric_im_ni = metric_im if normalize_metric_fun is None else normalize_metric_fun(metric_im, **normalize_metric_params)
-        contrast = coro_utils.compute_contrast(metric_im_ni, wfs_mask)
+        contrast = utils.compute_contrast(metric_im_ni, wfs_mask)
 
         iefc_data['raw_images'].append(copy.copy(metric_im))
         iefc_data['ni_images'].append(copy.copy(metric_im_ni))
