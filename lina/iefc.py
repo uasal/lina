@@ -186,6 +186,7 @@ def calibrate(
                 probe_modes,
                 probe_amplitude, 
                 base_command=base_command,
+                set_base_after=False,
                 normalize_diff_fun=normalize_diff_fun,
                 normalize_diff_params=normalize_diff_params,
             )
@@ -360,10 +361,10 @@ def run(iefc_data,
         modal_coeff = -control_matrix.dot(measurement_vector)
         del_command = gain * modal_matrix.dot(modal_coeff).reshape(Nact, Nact)
         total_command = (1.0 - leakage) * total_command + del_command
-        
-        set_dm_fun(total_command, **set_dm_params)
 
         print(f"Measuring dark hole state ...")
+        set_dm_fun(total_command, **set_dm_params)
+        
         metric_im = take_im_fun(**take_im_params)
         metric_im_ni = metric_im if normalize_metric_fun is None else normalize_metric_fun(metric_im, **normalize_metric_params)
         contrast = utils.compute_contrast(metric_im_ni, wfs_mask)
