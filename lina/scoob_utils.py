@@ -87,8 +87,8 @@ def normalize_coro_im_with_dm_spots(raw_im, im_params, ref_params, dark_im=0.0, 
     dm_spot_scale_factor = ref_params['flux_dm_spot_sat_psf'] / ref_params['flux_dm_spot_unsat_psf']
     Imax_true = ref_params['Imax_unsat_psf'] * dm_spot_scale_factor
     if verbose:
-        print(f'\tScale factor for Imax based on DM satelite spots is {dm_spot_scale_factor:.2e}')
-        print(f'\tImax scaled to {Imax_true:.2e}')
+        print(f'\tScale factor for Imax based on DM satelite spots is {dm_spot_scale_factor:.2f}')
+        print(f'\tImax scaled to {Imax_true:.2f} from {ref_params["Imax_unsat_psf"]}')
 
     ds_im = raw_im - dark_im
     ni_im = ds_im * exp_time_factor * gain_factor * fiber_atten_factor * laser_power_factor / Imax_true
@@ -372,6 +372,7 @@ def set_nsv455_fps(
 
 try:
     from pylablib.devices import NKT
+    from serial.tools import list_ports
 except ImportError:
     print('Could not import pylablib. NKT laser functionality not available.')
 
@@ -380,9 +381,28 @@ class Laser(object):
     varia = 16
     compact = 1
    
-    def __init__(self, addr='/dev/ttyUSB2'):
-        self.addr = addr
+    def __init__(self, id_vendor='10C4', id_product='EA60'): #addr='/dev/ttyUSB4'):
+        self.idVendor = id_vendor
+        self.idProduct = id_product
+        self.addr = self.determine_port()
         self.device = self.connect()
+
+    def determine_port(self):
+        '''
+        Determine the port from the USB idVendor and idProduct.
+
+        Stolen from: https://stackoverflow.com/a/38745584
+        '''
+        device_list = list_ports.comports()
+        for device in device_list:
+            if (device.vid != None or device.pid != None):
+                #print('{:04X}'.format(device.vid), '{:04X}'.format(device.pid))
+                if ('{:04X}'.format(device.vid) == self.idVendor and
+                    '{:04X}'.format(device.pid) == self.idProduct):
+                    port = device.device
+                    break
+                port = None
+        return port
     
     def connect(self):
         return NKT.GenericInterbusDevice(self.addr)
