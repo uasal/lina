@@ -186,7 +186,7 @@ def imshow(
             divider = make_axes_locatable(ax)
             cax = divider.append_axes("right", size="4%", pad=0.075)
             cbar = fig.colorbar(im, cax=cax)
-            cbar.ax.set_ylabel(cbar_label, rotation=cbar_label_rot, labelpad=cbar_label_pad)
+            cbar.ax.set_ylabel(cbar_label, rotation=cbar_label_rot, labelpad=cbar_label_pad, y=0.525)
     
     plt.subplots_adjust(wspace=wspace, hspace=hspace)
     plt.close()

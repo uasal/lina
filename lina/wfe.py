@@ -234,7 +234,8 @@ def compute_cumulative_psd(
     for i in range(1,len(freqs)):
         psd_domain = freqs[:i]
         psd_range = psd[:i]
-        psd_integral = scipy.integrate.simpson(ensure_np_array(psd_range), x=ensure_np_array(psd_domain))
+        # psd_integral = scipy.integrate.simpson(ensure_np_array(psd_range), x=ensure_np_array(psd_domain))
+        psd_integral = scipy.integrate.trapezoid(ensure_np_array(psd_range), x=ensure_np_array(psd_domain))
         cumulative_psd.append(psd_integral)
 
     # cumulative_psd = np.array(cumulative_psd)
