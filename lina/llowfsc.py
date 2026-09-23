@@ -248,6 +248,7 @@ def run(
         dm_modes,
         wfs_mask,
         dark_im=0.0,
+        modes=(0,10),
         get_zpo=None,
         get_zpo_params={},
         get_ffo=None,
@@ -305,13 +306,14 @@ def run(
     camlo_im = take_im_fun(**take_im_params)
 
     zpo = get_zpo(**get_zpo_params) if get_zpo is not None else 0.0
+    # print(zpo)
     recon_coeff = reconstruct(
         camlo_im, 
         ref_im + zpo, 
         wfs_mask,
         control_matrix,
         dark_im=dark_im,
-        modes=(0,10),
+        modes=modes,
     )
     ffo = get_ffo(**get_ffo_params) if get_ffo is not None else 0.0
     recon_coeff -= ffo
@@ -330,7 +332,7 @@ def compute_zpo(
         wfs_mask,
         response_matrix,
         dm_modal_matrix,
-        ZPO_STREAM,
+        ZPO_STREAM=None,
     ):
 
     """
@@ -338,6 +340,8 @@ def compute_zpo(
     by providing the ImageStreams of the desired DM channels as a list. 
     The ZPO is returned as an array but also written to an ImageStream of its
     own to be visualized in real time. 
+
+    ASSUMES CALIBRATION IS IN UNITS OF METERS BUT DM IS COMMANDED IN MICRONS
 
     Returns:
         DM_STREAMS (list): 
@@ -358,9 +362,9 @@ def compute_zpo(
 
     zpo = np.zeros((wfs_mask.shape[0], wfs_mask.shape[1]))
     for i in range(len(DM_STREAMS)):
-        zpo[wfs_mask] += response_matrix.dot( dm_modal_matrix.dot(DM_STREAMS[i].grab_latest()[dm_mask]) )
+        zpo[wfs_mask] += response_matrix.dot( dm_modal_matrix.dot(1e-6 * DM_STREAMS[i].grab_latest()[dm_mask]) ) # 1e-6 to go from microns to meters
 
-    ZPO_STREAM.write(zpo)
+    if ZPO_STREAM is not None: ZPO_STREAM.write(zpo)
 
     return zpo
 
