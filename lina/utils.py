@@ -210,8 +210,10 @@ def save_fits(fpath, data, header=None, ow=True, quiet=False):
     hdu.writeto(str(fpath), overwrite=ow) 
     if not quiet: print('Saved data to: ', str(fpath))
 
-def load_fits(fpath, header=False):
-    data = xp.array(fits.getdata(fpath))
+def load_fits(fpath, header=False, return_np=False): 
+    data = fits.getdata(fpath)
+    if not return_np:
+        data = xp.array(data)
     if header:
         hdr = fits.getheader(fpath)
         return data, hdr

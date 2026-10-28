@@ -95,18 +95,6 @@ def normalize_coro_im_with_dm_spots(raw_im, im_params, ref_params, dark_im=0.0, 
 
     return ni_im
 
-def compute_contrast(ni_im, mask, verbose=True):
-    ni_im_masked = ni_im[mask] # select pixels in desired mask
-    gtz_mask = ni_im_masked>0
-    if verbose:
-        Nmask = mask.sum()
-        Npix_gtz = gtz_mask.sum()
-        ratio = Npix_gtz / Nmask
-        print(f'\tRatio of pixels greater than zero versus total pixels: {Npix_gtz} / {Nmask} = {ratio:.2f}')
-    ni_im_gtz = ni_im_masked[gtz_mask] # select values greater than zero
-    contrast = np.mean(ni_im_gtz)
-    return contrast
-
 def snap_ni(STREAM, NFRAMES, im_params, ref_params, dark_im=0.0, fp_shift=None):
     raw_im = np.mean(STREAM.grab_many(NFRAMES), axis=0)
     ni_im = normalize_coro_im(raw_im, im_params, ref_params, dark_im)
