@@ -1,5 +1,5 @@
 from .math_module import xp, xcipy, ensure_np_array
-from lina import utils, coro_utils, pwp
+from lina import utils, pwp
 
 import numpy as np
 import time
@@ -164,6 +164,14 @@ def run(efc_data,
             Loop gain applied to each computed DM command. Defaults to 1.0.
         leakage (float, optional): 
             Leakage specifiy how much of the previous commands to remove. Defaults to 0.0.
+        plot_current (bool, optional): 
+            Plots the results of the current iteration. Defaults to True.
+        plot_all (bool, optional): 
+            Plots the results of all iterations performed during this round of iEFC. Defaults to False.
+        vmin (float, optional): 
+            Minimum contrast value to display on the plots. Defaults to 1e-10.
+        vmax (float, optional): 
+            Maximum contrast value to display on the plots. Defaults to 1e-5.
 
     Returns:
         efc_data (dict): 
@@ -198,7 +206,7 @@ def run(efc_data,
 
         metric_im = take_im_fun(**take_im_params)
         metric_im_ni = metric_im if normalize_metric_fun is None else normalize_metric_fun(metric_im, **normalize_metric_params)
-        contrast = coro_utils.compute_contrast(metric_im_ni, wfs_mask)
+        contrast = utils.compute_contrast(metric_im_ni, wfs_mask)
 
         print(f'\tContrast = {contrast:.3e}.')
 

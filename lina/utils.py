@@ -7,6 +7,7 @@ from astropy.io import fits
 import poppy
 import pickle
 import os
+from pathlib import Path
 import shutil
 import glob
 import skimage
@@ -186,7 +187,7 @@ def imshow(
             divider = make_axes_locatable(ax)
             cax = divider.append_axes("right", size="4%", pad=0.075)
             cbar = fig.colorbar(im, cax=cax)
-            cbar.ax.set_ylabel(cbar_label, rotation=cbar_label_rot, labelpad=cbar_label_pad)
+            cbar.ax.set_ylabel(cbar_label, rotation=cbar_label_rot, labelpad=cbar_label_pad, y=0.525)
     
     plt.subplots_adjust(wspace=wspace, hspace=hspace)
     plt.close()
@@ -209,8 +210,10 @@ def save_fits(fpath, data, header=None, ow=True, quiet=False):
     hdu.writeto(str(fpath), overwrite=ow) 
     if not quiet: print('Saved data to: ', str(fpath))
 
-def load_fits(fpath, header=False):
-    data = xp.array(fits.getdata(fpath))
+def load_fits(fpath, header=False, return_np=False): 
+    data = fits.getdata(fpath)
+    if not return_np:
+        data = xp.array(data)
     if header:
         hdr = fits.getheader(fpath)
         return data, hdr
@@ -232,24 +235,36 @@ def load_pickle(fpath):
 def get_fnames(data_path):
     return sorted(glob.glob(str(data_path)))
 
-def make_dir(dir_path):
-    # Create the directory
-    try:
-        os.mkdir(str(dir_path))
-        print(f"Directory '{str(dir_path)}' created successfully.")
-    except FileExistsError:
-        print(f"Directory '{str(dir_path)}' already exists.")
-    except PermissionError:
-        print(f"Permission denied: Unable to create '{str(dir_path)}'.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
+# def make_dir(dir_path):
+#     # Create the directory
+#     try:
+#         os.mkdir(str(dir_path))
+#         print(f"Directory '{str(dir_path)}' created successfully.")
+#     except FileExistsError:
+#         print(f"Directory '{str(dir_path)}' already exists.")
+#     except PermissionError:
+#         print(f"Permission denied: Unable to create '{str(dir_path)}'.")
+#     except Exception as e:
+#         print(f"An error occurred: {e}")
+
+def make_dir(path, parents=True, exist_ok=True):
+    Path(path).mkdir(parents=parents, exist_ok=exist_ok)
+
+def copy_files(src_dir, dst_dir):
+    # os.makedirs(dst_dir, exist_ok=True)
+    for file in os.listdir(src_dir):
+        src_path = os.path.join(src_dir, file)
+        if os.path.isfile(src_path):
+            shutil.copy(src_path, dst_dir)
 
 def move_files(source_path, target_path):
-    file_names = os.listdir(str(source_path))
-    for fname in file_names:
+    fnames = os.listdir(str(source_path))
+    # fnames = sorted(glob.glob(str(source_path)))
+    print(fnames)
+    for fname in fnames:
         shutil.move(str(source_path/fname), str(target_path/fname))
     print(f'Moved files from {str(source_path)} to {str(target_path)}')
-
+            
 def delete_files(dir_path):
     fnames = sorted(glob.glob(str(dir_path)))
     for fname in fnames:
@@ -435,7 +450,7 @@ def create_annular_mask(
         x = xp.linspace(-N/2, N/2-1, N) * pixelscale
     x,y = xp.meshgrid(x,x)
     r = xp.hypot(x, y)
-    mask = (r > irad) * (r < orad)
+    mask = (r >= irad) * (r < orad)
     if edge is not None: mask *= (x > edge)
     
     mask = xcipy.ndimage.rotate(mask, rotation, reshape=False, order=0)
@@ -449,6 +464,18 @@ def create_annular_mask(
         )
 
     return mask
+
+def compute_contrast(ni_im, mask, verbose=True):
+    ni_im_masked = ni_im[mask] # select pixels in desired mask
+    gtz_mask = ni_im_masked>0
+    if verbose:
+        Nmask = mask.sum()
+        Npix_gtz = gtz_mask.sum()
+        ratio = Npix_gtz / Nmask
+        print(f'\tRatio of pixels greater than zero versus total pixels: {Npix_gtz} / {Nmask} = {ratio:.2f}')
+    ni_im_gtz = ni_im_masked[gtz_mask] # select values greater than zero
+    contrast = np.mean(ni_im_gtz)
+    return contrast
 
 def get_radial_dist(shape, scaleyx=(1.0, 1.0), cenyx=None):
     '''

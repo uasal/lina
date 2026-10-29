@@ -90,9 +90,12 @@ def toggle_telem(on, channel, client, delay=None):
     else:
         client[f'telem_{channel}.writing.toggle'] = purepyindi.SwitchState.OFF
 
-def unpack_data(telem_path, data_path):
-    subprocess.run(['xrif2fits', '-d', str(telem_path), '-D', str(data_path)])
-    clear_output()
+def unpack_data(telem_path, data_path, clear=True):
+    # 'xrif2fits --noHeader --overwrite --dir /opt/MagAOX/rawimages/dm00disp01/dm00disp01/2026_09_30/ --outDir ~/kian_test_home_dir'
+    subprocess.run(['xrif2fits', '--noHeader', '--overwrite', '--dir', str(telem_path), '--outDir', str(data_path)])
+    if clear:
+        time.sleep(0.25)
+        clear_output()
 
 def read_telem_times(data_fnames, absolute=False):
     data_times = []
@@ -110,7 +113,7 @@ def read_telem_times(data_fnames, absolute=False):
 
     return data_times
 
-def read_telem_data(data_fnames, absolute=False):
+def read_telem_data(data_fnames, return_times=True, rel_times=True):
     data = []
     data_times = []
     for fname in data_fnames:
@@ -123,11 +126,13 @@ def read_telem_data(data_fnames, absolute=False):
     data = np.array(data) 
     data_times = np.array(data_times)
 
-    if not absolute: 
-        start_time = data_times[0]
-        data_times = data_times - start_time
-
-    return data, data_times
+    if return_times:
+        if rel_times: 
+            start_time = data_times[0]
+            data_times = data_times - start_time
+        return data, data_times
+    
+    return data
 
 class ContinuousProcess():
 
