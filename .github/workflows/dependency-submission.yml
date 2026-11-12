@@ -1,0 +1,33 @@
+name: Dependency submission
+
+# Populates the GitHub dependency graph (and SBOM) from the resolved Python
+# project. GitHub does not parse PEP 621 `[project].dependencies` from a
+# setuptools `pyproject.toml`, so without this the graph only shows build-system
+# requirements. This action detects the dependency set and submits it via the
+# Dependency Submission API.
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - pyproject.toml
+      - .github/workflows/dependency-submission.yml
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  dependency-submission:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Detect and submit dependencies
+        uses: advanced-security/component-detection-dependency-submission-action@v0.2.0
