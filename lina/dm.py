@@ -243,5 +243,41 @@ def make_cross_command(xc=[0], yc=[0], Nact=34):
     # cross
     return cross
 
+from skimage import draw
 
+def make_test_pattern(dm_mask, plot=True):
+    idx = 0
+    val = 0.1
+    circ_rad = 14
+    test = np.zeros((34,34))
+
+    # diagonal
+    l1_idx = draw.line(1,1,32,32)
+    test[l1_idx[0][::2],l1_idx[1][::2]] = val
+    test[l1_idx[0][1::2],l1_idx[1][1::2]] = -val
+
+    l2_idx = draw.line(32,1,1,32)
+    test[l2_idx[0][::2],l2_idx[1][::2]] = val
+    test[l2_idx[0][1::2],l2_idx[1][1::2]] = -val
+
+    idx, idy = np.indices((34,34)) - 16.5
+    r = np.sqrt(idx**2 + idy**2)
+    grid = np.zeros((34,34))
+    grid[::2,::2] = val
+    grid[::2,1::2] = -val
+    grid[1::2,::2] = -val
+    grid[1::2,1::2] = val
+
+    circ = np.zeros((34,34))
+    circ[(r <= circ_rad)] = grid[r <= circ_rad]
+    circ[::2,::2]
+    circ[r < circ_rad - 1] = 0
+    test += circ
+
+    test *= ensure_np_array(dm_mask)
+
+    if plot:
+        utils.imshow(
+            [test]
+        )
 
